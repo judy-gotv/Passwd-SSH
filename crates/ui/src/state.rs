@@ -146,6 +146,7 @@ pub struct UiState {
     pub selected_host: Option<String>,
     pub show_host_editor: bool,
     pub host_form: HostForm,
+    pub import_buffer: String,
     pub confirm: Option<ConfirmDialog>,
     // terminal tabs
     pub tabs: Vec<TermTab>,
@@ -187,6 +188,9 @@ pub struct UiState {
     // settings
     pub theme_name: String,
     pub applied_theme: String,
+    pub settings_pw_old: String,
+    pub settings_pw_new: String,
+    pub settings_pw_confirm: String,
     pub sync_kind: String, // "off" | "file" | "http"
     pub sync_file_dir: String,
     pub sync_http_endpoint: String,
@@ -207,6 +211,7 @@ impl UiState {
             selected_host: None,
             show_host_editor: false,
             host_form: HostForm::blank(),
+            import_buffer: String::new(),
             confirm: None,
             tabs: Vec::new(),
             active_tab: 0,
@@ -240,6 +245,9 @@ impl UiState {
             forward_remote_port: String::new(),
             theme_name: "Dark".to_string(),
             applied_theme: String::new(),
+            settings_pw_old: String::new(),
+            settings_pw_new: String::new(),
+            settings_pw_confirm: String::new(),
             sync_kind: "off".to_string(),
             sync_file_dir: String::new(),
             sync_http_endpoint: String::new(),

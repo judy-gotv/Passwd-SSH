@@ -1,0 +1,36 @@
+# OpsDeck application binary (eframe + all crates wired together).
+# Author: Passwd Word
+
+[package]
+name = "opsdeck"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "OpsDeck — local-first SSH workstation"
+
+[[bin]]
+name = "opsdeck"
+path = "src/main.rs"
+
+[dependencies]
+eframe.workspace = true
+egui.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+directories.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+async-trait.workspace = true
+opsdeck-ui = { path = "../ui" }
+opsdeck-ssh = { path = "../ssh" }
+opsdeck-terminal = { path = "../terminal" }
+opsdeck-sftp = { path = "../sftp" }
+opsdeck-storage = { path = "../storage" }
+opsdeck-vault = { path = "../vault" }
+opsdeck-ops = { path = "../ops" }
+opsdeck-sync = { path = "../sync" }

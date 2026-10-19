@@ -594,6 +594,25 @@ impl TransferDao<'_> {
         rows.iter().map(map_transfer).collect::<Result<_, _>>().map_err(Into::into)
     }
 
+    /// List the most recently updated tasks across all hosts (for the UI queue).
+    pub async fn list_recent(&self, limit: i64) -> Result<Vec<TransferTask>, StorageError> {
+        let rows = sqlx::query(
+            "SELECT * FROM transfer_tasks ORDER BY updated_at DESC LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(self.pool)
+        .await?;
+        rows.iter().map(map_transfer).collect::<Result<_, _>>().map_err(Into::into)
+    }
+            "SELECT * FROM transfer_tasks
+             WHERE status IN ('pending', 'running', 'paused')
+             ORDER BY created_at ASC",
+        )
+        .fetch_all(self.pool)
+        .await?;
+        rows.iter().map(map_transfer).collect::<Result<_, _>>().map_err(Into::into)
+    }
+
     /// Delete finished tasks older than `cutoff` (unix seconds).
     pub async fn prune_finished_before(&self, cutoff: i64) -> Result<u64, StorageError> {
         let r = sqlx::query(

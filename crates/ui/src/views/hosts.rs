@@ -39,7 +39,7 @@ pub fn left_panel(ctx: &egui::Context, state: &mut UiState, data: &UiData, event
                         confirm_label: "Import".to_string(),
                         action: "import_hosts".to_string(),
                     });
-                    state.host_form.tags = String::new(); // reuse as paste buffer
+                    state.import_buffer.clear();
                 }
                 if ui.small_button("⤓ Export").clicked() {
                     events.push(UiEvent::ExportHosts);

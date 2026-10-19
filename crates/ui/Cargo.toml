@@ -19,4 +19,3 @@ opsdeck-terminal = { path = "../terminal" }
 opsdeck-ssh = { path = "../ssh" }
 opsdeck-storage = { path = "../storage" }
 opsdeck-ops = { path = "../ops" }
-opsdeck-sync = { path = "../sync" }
