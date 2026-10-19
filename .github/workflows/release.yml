@@ -110,6 +110,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -125,14 +127,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set +e
-          OUTPUT=$(gh release create "${GITHUB_REF_NAME}" dist/* \
+          gh release create "${GITHUB_REF_NAME}" dist/* \
             --title "OpsDeck ${GITHUB_REF_NAME}" \
-            --notes "OpsDeck ${GITHUB_REF_NAME} — see README.md for install instructions." 2>&1)
-          EC=$?
-          echo "$OUTPUT"
-          if [ $EC -ne 0 ]; then
-            MSG=$(echo "$OUTPUT" | head -5 | tr '\n' ' ' | head -c 900)
-            echo "::error::gh release create failed (exit $EC): $MSG"
-            exit $EC
-          fi
+            --notes "OpsDeck ${GITHUB_REF_NAME} — see README.md for install instructions."
