@@ -6,7 +6,7 @@ use crate::{MainTab, UiData, UiEvent, UiState};
 /// Top menu bar.
 pub fn top_bar(ctx: &egui::Context, state: &mut UiState, _data: &UiData, events: &mut Vec<UiEvent>) {
     egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
-        egui::menu::bar(ui, |ui| {
+        egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
                 if ui.button("New terminal tab    Ctrl+T").clicked() {
                     new_tab(state, events);

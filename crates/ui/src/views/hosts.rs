@@ -164,7 +164,6 @@ fn host_row(
             events.push(UiEvent::ToggleFavorite(host.id.clone()));
         }
 
-        let label = format!("{}\n{}", host.name, format!("{}@{}:{}", host.username, host.host, host.port));
         let resp = ui.selectable_label(
             selected,
             egui::RichText::new(&host.name).strong(),
@@ -176,7 +175,6 @@ fn host_row(
             events.push(UiEvent::ConnectHost(host.id.clone()));
         }
         resp.on_hover_text(format!("{}@{}:{}\nDouble-click to connect", host.username, host.host, host.port));
-        let _ = label;
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if connecting {

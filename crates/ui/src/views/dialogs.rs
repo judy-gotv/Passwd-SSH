@@ -46,8 +46,9 @@ fn host_key_prompts(ctx: &egui::Context, state: &mut UiState, data: &UiData, eve
                 ui.label(format!("Host: {}:{}", prompt.host, prompt.port));
                 ui.label(format!("Key type: {}", prompt.key_type));
                 ui.label("Fingerprint (OpenSSH):");
+                let mut key_text = prompt.key_openssh.clone();
                 ui.add(
-                    egui::TextEdit::multiline(&mut prompt.key_openssh.clone())
+                    egui::TextEdit::multiline(&mut key_text)
                         .desired_rows(2)
                         .desired_width(420.0),
                 );

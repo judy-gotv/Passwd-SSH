@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use opsdeck_ops::{batch, MetricsCollector, SnippetService};
-use opsdeck_sftp::{FileEntry, QueueEvent, RusshSftpEngine, TransferDirection, TransferQueue};
+use opsdeck_sftp::{FileEntry, QueueEvent, RusshSftpEngine, SftpEngine, TransferDirection, TransferQueue};
 use opsdeck_ssh::{
     CredentialProvider, HostKeyDecision, HostKeyPrompt, LocalForward, SessionId, SessionInfo,
     SessionManager, ShellChannel, ShellCommand, ShellEvent, SshError,
@@ -27,7 +27,7 @@ use opsdeck_ui::{
     ForwardView, KeyPromptView, MainTab, SftpListing, Screen, SyncStatusView, TermTab, Theme,
     UiData, UiEvent, UiState, UpdateStatusView,
 };
-use opsdeck_vault::{EncryptedBlob, SecretBytes, SecretString, Vault, VaultError, VaultVerifier};
+use opsdeck_vault::{EncryptedBlob, SecretBytes, SecretString, Vault, VaultVerifier};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::update::{check_update, UpdateInfo};
@@ -315,7 +315,7 @@ impl OpsDeckApp {
         let mut app = Self {
             state,
             storage,
-            ssh,
+            ssh: ssh.clone(),
             creds,
             vault,
             verifier_path,
@@ -378,7 +378,7 @@ impl OpsDeckApp {
 
     // -- per-frame -----------------------------------------------------------
 
-    fn drain_messages(&mut self, ctx: &egui::Context) {
+    fn drain_messages(&mut self, _ctx: &egui::Context) {
         // App messages.
         while let Ok(msg) = self.msg_rx.try_recv() {
             self.activity = true;
@@ -500,7 +500,7 @@ impl OpsDeckApp {
                 if let Some((tab_idx, vertical)) = split_into {
                     if let Some(tab) = self.state.tabs.get_mut(tab_idx) {
                         tab.vertical = vertical;
-                        tab.panes.push(opsdeck_ui::Pane { session, host_id: String::new(), title: name });
+                        tab.panes.push(opsdeck_ui::Pane { session, host_id: String::new(), title: name.clone() });
                         tab.active_pane = tab.panes.len() - 1;
                     }
                 } else if open_tab {
@@ -849,8 +849,8 @@ impl OpsDeckApp {
                         self.state.screen = Screen::Main;
                         self.state.unlock_error = None;
                     }
-                    Err(VaultError::WrongPassword) | Err(_) => {
-                        // Map any unlock failure to a friendly message (never leak why).
+                    Err(_) => {
+                        // Never leak why unlock failed.
                         self.state.unlock_error = Some("Wrong password.".to_string());
                     }
                 }
@@ -1162,8 +1162,11 @@ impl OpsDeckApp {
                             let out = results
                                 .into_iter()
                                 .map(|r| {
-                                    let text = r.output.map(|o| o.stdout).unwrap_or_else(|| r.error.unwrap_or_default());
-                                    (r.name, text)
+                                    let text = match r.result {
+                                        Ok(o) => o.stdout,
+                                        Err(e) => format!("error: {e}"),
+                                    };
+                                    (r.label, text)
                                 })
                                 .collect();
                             let _ = tx.send(AppMsg::BatchDone { results: out });

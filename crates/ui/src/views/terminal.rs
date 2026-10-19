@@ -205,7 +205,7 @@ fn jump_hit(state: &mut UiState, session: SessionId, dir: i32) {
             return;
         }
         // Cycle through hits with a per-session cursor.
-        let cursor_key = session.wrapping_add(0x9e37);
+        let cursor_key = session.as_u128() as u64;
         let idx = state.search_hit_cursor.get(&cursor_key).copied().unwrap_or(0);
         let next = ((idx as i32 + dir).rem_euclid(hits.len() as i32)) as usize;
         state.search_hit_cursor.insert(cursor_key, next);
