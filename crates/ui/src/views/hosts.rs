@@ -6,7 +6,12 @@ use opsdeck_ssh::SessionState;
 use crate::{HostForm, MainTab, UiData, UiEvent, UiState};
 
 /// Draw the left host panel.
-pub fn left_panel(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+pub fn left_panel(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    data: &UiData,
+    events: &mut Vec<UiEvent>,
+) {
     egui::SidePanel::left("host_panel")
         .default_width(264.0)
         .min_width(200.0)
@@ -73,7 +78,9 @@ pub fn left_panel(ctx: &egui::Context, state: &mut UiState, data: &UiData, event
                 let members: Vec<_> = data
                     .hosts
                     .iter()
-                    .filter(|h| h.group_id.as_deref() == Some(group.id.as_str()) && matches_query(h, &query))
+                    .filter(|h| {
+                        h.group_id.as_deref() == Some(group.id.as_str()) && matches_query(h, &query)
+                    })
                     .collect();
                 if members.is_empty() && !query.is_empty() {
                     continue;
@@ -99,7 +106,11 @@ pub fn left_panel(ctx: &egui::Context, state: &mut UiState, data: &UiData, event
             if data.hosts.is_empty() {
                 ui.add_space(12.0);
                 ui.label(egui::RichText::new("No hosts yet.").weak());
-                ui.label(egui::RichText::new("Click “＋ Add” to add your first server.").small().weak());
+                ui.label(
+                    egui::RichText::new("Click “＋ Add” to add your first server.")
+                        .small()
+                        .weak(),
+                );
             }
 
             ui.add_space(8.0);
@@ -129,7 +140,11 @@ pub fn left_panel(ctx: &egui::Context, state: &mut UiState, data: &UiData, event
                         });
                     });
                     if let Some(err) = &session.last_error {
-                        ui.label(egui::RichText::new(err).small().color(egui::Color32::from_rgb(255, 120, 120)));
+                        ui.label(
+                            egui::RichText::new(err)
+                                .small()
+                                .color(egui::Color32::from_rgb(255, 120, 120)),
+                        );
                     }
                 }
             }
@@ -143,7 +158,10 @@ fn matches_query(host: &opsdeck_storage::models::Host, query: &str) -> bool {
     host.name.to_lowercase().contains(query)
         || host.host.to_lowercase().contains(query)
         || host.username.to_lowercase().contains(query)
-        || host.tag_list().iter().any(|t| t.to_lowercase().contains(query))
+        || host
+            .tag_list()
+            .iter()
+            .any(|t| t.to_lowercase().contains(query))
 }
 
 /// One host row: status dot, name, address, connect + context buttons.
@@ -160,21 +178,25 @@ fn host_row(
     ui.horizontal(|ui| {
         // Favorite star
         let star = if host.favorite { "★" } else { "☆" };
-        if ui.small_button(star).on_hover_text("Toggle favorite").clicked() {
+        if ui
+            .small_button(star)
+            .on_hover_text("Toggle favorite")
+            .clicked()
+        {
             events.push(UiEvent::ToggleFavorite(host.id.clone()));
         }
 
-        let resp = ui.selectable_label(
-            selected,
-            egui::RichText::new(&host.name).strong(),
-        );
+        let resp = ui.selectable_label(selected, egui::RichText::new(&host.name).strong());
         if resp.clicked() {
             state.selected_host = Some(host.id.clone());
         }
         if resp.double_clicked() && !connecting {
             events.push(UiEvent::ConnectHost(host.id.clone()));
         }
-        resp.on_hover_text(format!("{}@{}:{}\nDouble-click to connect", host.username, host.host, host.port));
+        resp.on_hover_text(format!(
+            "{}@{}:{}\nDouble-click to connect",
+            host.username, host.host, host.port
+        ));
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if connecting {
@@ -221,10 +243,7 @@ fn host_row(
     }
 }
 
-fn host_form_from(
-    host: &opsdeck_storage::models::Host,
-    data: &UiData,
-) -> HostForm {
+fn host_form_from(host: &opsdeck_storage::models::Host, data: &UiData) -> HostForm {
     let _ = data;
     HostForm {
         id: Some(host.id.clone()),

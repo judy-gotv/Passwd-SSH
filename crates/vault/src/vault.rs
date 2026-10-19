@@ -112,13 +112,16 @@ impl Vault {
     ///
     /// Returns [`VaultError::WrongPassword`] when the password is incorrect
     /// (or the verifier is corrupt — indistinguishable by design).
-    pub fn unlock(
-        master: &SecretString,
-        verifier: &VaultVerifier,
-    ) -> Result<Self, VaultError> {
-        let key = derive_key(master.expose_secret().as_bytes(), &verifier.salt, &verifier.kdf)?;
+    pub fn unlock(master: &SecretString, verifier: &VaultVerifier) -> Result<Self, VaultError> {
+        let key = derive_key(
+            master.expose_secret().as_bytes(),
+            &verifier.salt,
+            &verifier.kdf,
+        )?;
         let vault = Self { key };
-        let check = vault.decrypt(&verifier.check).map_err(|_| VaultError::WrongPassword)?;
+        let check = vault
+            .decrypt(&verifier.check)
+            .map_err(|_| VaultError::WrongPassword)?;
         if check != CHECK_PLAINTEXT {
             return Err(VaultError::WrongPassword);
         }
@@ -134,7 +137,10 @@ impl Vault {
         let ciphertext = cipher
             .encrypt(nonce, plaintext)
             .map_err(|_| VaultError::Encryption)?;
-        Ok(EncryptedBlob { nonce: nonce_bytes, ciphertext })
+        Ok(EncryptedBlob {
+            nonce: nonce_bytes,
+            ciphertext,
+        })
     }
 
     /// Decrypt a blob. Fails when the blob was tampered with.
@@ -198,7 +204,11 @@ mod tests {
         let back = vault.decrypt(&blob).unwrap();
         assert_eq!(back, b"my-secret-password");
 
-        let vault2 = Vault::unlock(&SecretString::new("correct horse battery staple"), &verifier).unwrap();
+        let vault2 = Vault::unlock(
+            &SecretString::new("correct horse battery staple"),
+            &verifier,
+        )
+        .unwrap();
         let back2 = vault2.decrypt(&blob).unwrap();
         assert_eq!(back2, b"my-secret-password");
     }
@@ -231,12 +241,19 @@ mod tests {
     #[test]
     fn rekey_keeps_working() {
         let (vault, _v) = test_vault();
-        let (vault2, verifier2) =
-            vault.rekey(&SecretString::new("brand new password")).unwrap();
+        let (vault2, verifier2) = vault
+            .rekey(&SecretString::new("brand new password"))
+            .unwrap();
         let blob = vault2.encrypt(b"hello").unwrap();
         let v3 = Vault::unlock(&SecretString::new("brand new password"), &verifier2).unwrap();
         assert_eq!(v3.decrypt(&blob).unwrap(), b"hello");
         // Old password must not open the new verifier.
-        assert!(Vault::unlock(&SecretString::new("correct horse battery staple"), &verifier2).is_err());
+        assert!(
+            Vault::unlock(
+                &SecretString::new("correct horse battery staple"),
+                &verifier2
+            )
+            .is_err()
+        );
     }
 }

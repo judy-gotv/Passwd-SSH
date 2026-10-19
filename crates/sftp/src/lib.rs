@@ -9,9 +9,9 @@
 //! Author: Passwd Word
 
 pub mod engine;
+mod error;
 pub mod queue;
 pub mod types;
-mod error;
 
 pub use engine::{ProgressSender, RusshSftpEngine, SftpEngine, TransferProgress};
 pub use error::SftpError;

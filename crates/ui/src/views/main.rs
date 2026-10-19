@@ -4,7 +4,12 @@
 use crate::{MainTab, UiData, UiEvent, UiState};
 
 /// Top menu bar.
-pub fn top_bar(ctx: &egui::Context, state: &mut UiState, _data: &UiData, events: &mut Vec<UiEvent>) {
+pub fn top_bar(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    _data: &UiData,
+    events: &mut Vec<UiEvent>,
+) {
     egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
@@ -53,7 +58,10 @@ pub fn top_bar(ctx: &egui::Context, state: &mut UiState, _data: &UiData, events:
                 ui.separator();
                 ui.menu_button("Theme", |ui| {
                     for name in ["Dark", "Light"] {
-                        if ui.selectable_label(state.theme_name == name, name).clicked() {
+                        if ui
+                            .selectable_label(state.theme_name == name, name)
+                            .clicked()
+                        {
                             state.theme_name = name.to_string();
                             events.push(UiEvent::SetTheme(name.to_string()));
                             ui.close_menu();
@@ -142,7 +150,10 @@ pub fn status_bar(ctx: &egui::Context, state: &mut UiState, data: &UiData) {
                 if data.update.available {
                     ui.colored_label(
                         egui::Color32::from_rgb(120, 220, 120),
-                        format!("⬆ Update available: {}", data.update.latest.clone().unwrap_or_default()),
+                        format!(
+                            "⬆ Update available: {}",
+                            data.update.latest.clone().unwrap_or_default()
+                        ),
                     );
                 }
                 if data.sync.configured {
@@ -154,7 +165,11 @@ pub fn status_bar(ctx: &egui::Context, state: &mut UiState, data: &UiData) {
                     ui.label(egui::RichText::new(format!("🔄 {txt}")).small().weak());
                 }
                 if !data.forwards.is_empty() {
-                    ui.label(egui::RichText::new(format!("⇄ {} forward(s)", data.forwards.len())).small().weak());
+                    ui.label(
+                        egui::RichText::new(format!("⇄ {} forward(s)", data.forwards.len()))
+                            .small()
+                            .weak(),
+                    );
                 }
                 let _ = state;
             });
@@ -166,7 +181,15 @@ pub fn status_bar(ctx: &egui::Context, state: &mut UiState, data: &UiData) {
 pub fn global_shortcuts(ctx: &egui::Context, state: &mut UiState, events: &mut Vec<UiEvent>) {
     ctx.input(|i| {
         for ev in &i.events {
-            let egui::Event::Key { key, pressed: true, modifiers, .. } = ev else { continue };
+            let egui::Event::Key {
+                key,
+                pressed: true,
+                modifiers,
+                ..
+            } = ev
+            else {
+                continue;
+            };
             use egui::Key;
             if modifiers.command && !modifiers.shift {
                 match key {
@@ -179,7 +202,11 @@ pub fn global_shortcuts(ctx: &egui::Context, state: &mut UiState, events: &mut V
                         // Terminal search (only meaningful on the terminal tab).
                         if state.main_tab == MainTab::Terminal {
                             if let Some(pane) = state.active_pane().cloned() {
-                                let open = !state.search_open.get(&pane.session).copied().unwrap_or(false);
+                                let open = !state
+                                    .search_open
+                                    .get(&pane.session)
+                                    .copied()
+                                    .unwrap_or(false);
                                 state.search_open.insert(pane.session, open);
                             }
                         }

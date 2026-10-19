@@ -4,7 +4,7 @@
 
 use egui::{Align2, Color32, FontFamily, FontId, Pos2, Rect, Stroke, Vec2};
 use opsdeck_ssh::SessionId;
-use opsdeck_terminal::input::{ctrl_byte, key_to_bytes, KeyMods, TermKey};
+use opsdeck_terminal::input::{KeyMods, TermKey, ctrl_byte, key_to_bytes};
 
 use crate::theme::terminal_defaults;
 use crate::{MainTab, TermTab, UiData, UiEvent, UiState};
@@ -12,45 +12,59 @@ use crate::{MainTab, TermTab, UiData, UiEvent, UiState};
 /// Draw the terminal tab: tab bar + toolbar + panes.
 pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
     // Tab bar + toolbar
-    egui::TopBottomPanel::top("term_toolbar")
-        .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                // Tabs
-                for (i, tab) in state.tabs.iter().enumerate() {
-                    let title = tab_title(tab);
-                    let active = i == state.active_tab;
-                    if ui.selectable_label(active, title).clicked() {
-                        state.active_tab = i;
-                    }
-                    if ui.small_button("✕").on_hover_text("Close tab").clicked() {
-                        let sessions: Vec<SessionId> =
-                            tab.panes.iter().map(|p| p.session).collect();
-                        for s in sessions {
-                            events.push(UiEvent::ClosePane(s));
-                        }
-                    }
-                    ui.separator();
+    egui::TopBottomPanel::top("term_toolbar").show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            // Tabs
+            for (i, tab) in state.tabs.iter().enumerate() {
+                let title = tab_title(tab);
+                let active = i == state.active_tab;
+                if ui.selectable_label(active, title).clicked() {
+                    state.active_tab = i;
                 }
-                if state.tabs.is_empty() {
-                    ui.label(egui::RichText::new("No terminal tabs").weak());
+                if ui.small_button("✕").on_hover_text("Close tab").clicked() {
+                    let sessions: Vec<SessionId> = tab.panes.iter().map(|p| p.session).collect();
+                    for s in sessions {
+                        events.push(UiEvent::ClosePane(s));
+                    }
                 }
+                ui.separator();
+            }
+            if state.tabs.is_empty() {
+                ui.label(egui::RichText::new("No terminal tabs").weak());
+            }
 
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("🔍").on_hover_text("Search terminal (Ctrl+F)").clicked() {
-                        toggle_search(state);
-                    }
-                    if ui.small_button("⬒").on_hover_text("Split left/right (Ctrl+Shift+E)").clicked() {
-                        events.push(UiEvent::SplitPane { vertical: false });
-                    }
-                    if ui.small_button("⬓").on_hover_text("Split up/down (Ctrl+Shift+O)").clicked() {
-                        events.push(UiEvent::SplitPane { vertical: true });
-                    }
-                    if ui.small_button("＋").on_hover_text("New tab (Ctrl+T)").clicked() {
-                        new_tab_for_selection(state, events);
-                    }
-                });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .small_button("🔍")
+                    .on_hover_text("Search terminal (Ctrl+F)")
+                    .clicked()
+                {
+                    toggle_search(state);
+                }
+                if ui
+                    .small_button("⬒")
+                    .on_hover_text("Split left/right (Ctrl+Shift+E)")
+                    .clicked()
+                {
+                    events.push(UiEvent::SplitPane { vertical: false });
+                }
+                if ui
+                    .small_button("⬓")
+                    .on_hover_text("Split up/down (Ctrl+Shift+O)")
+                    .clicked()
+                {
+                    events.push(UiEvent::SplitPane { vertical: true });
+                }
+                if ui
+                    .small_button("＋")
+                    .on_hover_text("New tab (Ctrl+T)")
+                    .clicked()
+                {
+                    new_tab_for_selection(state, events);
+                }
             });
         });
+    });
 
     // Panes
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -78,7 +92,12 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
             .get(state.tabs[tab_idx].active_pane)
             .cloned()
         {
-            if state.search_open.get(&pane.session).copied().unwrap_or(false) {
+            if state
+                .search_open
+                .get(&pane.session)
+                .copied()
+                .unwrap_or(false)
+            {
                 search_bar(ctx, state, data, events, pane.session);
             }
         }
@@ -91,11 +110,11 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
                         (p.session, p.title.clone())
                     };
                     let h = ui.available_height() / (pane_count - pane_idx) as f32;
-                    let rect = Rect::from_min_size(
-                        ui.cursor().min,
-                        Vec2::new(ui.available_width(), h),
+                    let rect =
+                        Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), h));
+                    pane_widget(
+                        ui, ctx, state, data, events, tab_idx, pane_idx, session, &title, rect,
                     );
-                    pane_widget(ui, ctx, state, data, events, tab_idx, pane_idx, session, &title, rect);
                 }
             });
         } else {
@@ -106,11 +125,11 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
                         (p.session, p.title.clone())
                     };
                     let w = ui.available_width() / (pane_count - pane_idx) as f32;
-                    let rect = Rect::from_min_size(
-                        ui.cursor().min,
-                        Vec2::new(w, ui.available_height()),
+                    let rect =
+                        Rect::from_min_size(ui.cursor().min, Vec2::new(w, ui.available_height()));
+                    pane_widget(
+                        ui, ctx, state, data, events, tab_idx, pane_idx, session, &title, rect,
                     );
-                    pane_widget(ui, ctx, state, data, events, tab_idx, pane_idx, session, &title, rect);
                     if pane_idx + 1 < pane_count {
                         ui.separator();
                     }
@@ -140,7 +159,11 @@ fn new_tab_for_selection(state: &mut UiState, events: &mut Vec<UiEvent>) {
 
 fn toggle_search(state: &mut UiState) {
     if let Some(pane) = state.active_pane().cloned() {
-        let open = !state.search_open.get(&pane.session).copied().unwrap_or(false);
+        let open = !state
+            .search_open
+            .get(&pane.session)
+            .copied()
+            .unwrap_or(false);
         state.search_open.insert(pane.session, open);
         if open {
             state.search_query.entry(pane.session).or_default();
@@ -175,7 +198,11 @@ fn search_bar(
                                 .desired_width(200.0),
                         );
                         resp.request_focus();
-                        let hits = state.terminals.get(&session).map(|t| t.search(query)).unwrap_or_default();
+                        let hits = state
+                            .terminals
+                            .get(&session)
+                            .map(|t| t.search(query))
+                            .unwrap_or_default();
                         ui.label(format!("{}/{}", 0, hits.len()));
                         if ui.small_button("▲").clicked() {
                             jump_hit(state, session, -1);
@@ -195,7 +222,11 @@ fn search_bar(
 
 /// Jump to the next/previous search hit.
 fn jump_hit(state: &mut UiState, session: SessionId, dir: i32) {
-    let query = state.search_query.get(&session).cloned().unwrap_or_default();
+    let query = state
+        .search_query
+        .get(&session)
+        .cloned()
+        .unwrap_or_default();
     if query.is_empty() {
         return;
     }
@@ -206,7 +237,11 @@ fn jump_hit(state: &mut UiState, session: SessionId, dir: i32) {
         }
         // Cycle through hits with a per-session cursor.
         let cursor_key = session.as_u128() as u64;
-        let idx = state.search_hit_cursor.get(&cursor_key).copied().unwrap_or(0);
+        let idx = state
+            .search_hit_cursor
+            .get(&cursor_key)
+            .copied()
+            .unwrap_or(0);
         let next = ((idx as i32 + dir).rem_euclid(hits.len() as i32)) as usize;
         state.search_hit_cursor.insert(cursor_key, next);
         term.scroll_to_grid_line(hits[next].0);
@@ -235,9 +270,9 @@ fn pane_widget(
     let font_id = FontId::new(theme.terminal_font_size, FontFamily::Monospace);
 
     // Cell metrics from a sample run.
-    let sample = ui
-        .painter()
-        .layout_no_wrap("MMMMMMMMMM".to_owned(), font_id.clone(), Color32::WHITE);
+    let sample =
+        ui.painter()
+            .layout_no_wrap("MMMMMMMMMM".to_owned(), font_id.clone(), Color32::WHITE);
     let cell_w = (sample.rect.width() / 10.0).max(4.0);
     let cell_h = sample.rect.height().max(8.0);
 
@@ -279,7 +314,13 @@ fn pane_widget(
     if response.drag_started() {
         if let Some(pos) = response.interact_pointer_pos() {
             let cell = pos_to_cell(pos);
-            state.selections.insert(session, crate::Selection { anchor: cell, head: cell });
+            state.selections.insert(
+                session,
+                crate::Selection {
+                    anchor: cell,
+                    head: cell,
+                },
+            );
         }
     } else if response.dragged() {
         if let Some(pos) = response.interact_pointer_pos() {
@@ -312,7 +353,10 @@ fn pane_widget(
                     let x = rect.left() + cs as f32 * cell_w;
                     let y = rect.top() + r as f32 * cell_h;
                     painter.rect_filled(
-                        Rect::from_min_size(Pos2::new(x, y), Vec2::new((ce - cs) as f32 * cell_w, cell_h)),
+                        Rect::from_min_size(
+                            Pos2::new(x, y),
+                            Vec2::new((ce - cs) as f32 * cell_w, cell_h),
+                        ),
                         0.0,
                         hl,
                     );
@@ -345,7 +389,13 @@ fn pane_widget(
                         egui_color(span.bg),
                     );
                 }
-                painter.text(Pos2::new(x, y), Align2::LEFT_TOP, &span.text, font_id.clone(), fg);
+                painter.text(
+                    Pos2::new(x, y),
+                    Align2::LEFT_TOP,
+                    &span.text,
+                    font_id.clone(),
+                    fg,
+                );
                 if span.bold {
                     // Faux bold: second pass slightly offset.
                     painter.text(
@@ -358,7 +408,10 @@ fn pane_widget(
                 }
                 if span.underline {
                     painter.line_segment(
-                        [Pos2::new(x, y + cell_h - 2.0), Pos2::new(x + w, y + cell_h - 2.0)],
+                        [
+                            Pos2::new(x, y + cell_h - 2.0),
+                            Pos2::new(x + w, y + cell_h - 2.0),
+                        ],
                         Stroke::new(1.0, fg),
                     );
                 }
@@ -370,13 +423,17 @@ fn pane_widget(
         if rendered.cursor_visible && cr < rows && cc < cols {
             let x = rect.left() + cc as f32 * cell_w;
             let y = rect.top() + cr as f32 * cell_h;
-            let cursor_rect =
-                Rect::from_min_size(Pos2::new(x, y), Vec2::new(cell_w, cell_h));
+            let cursor_rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(cell_w, cell_h));
             let cursor_color = egui_color(def_fg);
             if response.has_focus() {
                 painter.rect_filled(cursor_rect, 0.0, cursor_color);
             } else {
-                painter.rect_stroke(cursor_rect, 0.0, Stroke::new(1.0, cursor_color), egui::StrokeKind::Outside);
+                painter.rect_stroke(
+                    cursor_rect,
+                    0.0,
+                    Stroke::new(1.0, cursor_color),
+                    egui::StrokeKind::Outside,
+                );
             }
         }
 
@@ -384,7 +441,10 @@ fn pane_widget(
         if let Some(info) = data.session(&session) {
             use opsdeck_ssh::SessionState;
             if info.state == SessionState::Disconnected || info.state == SessionState::Failed {
-                let msg = info.last_error.clone().unwrap_or_else(|| "Session closed.".to_string());
+                let msg = info
+                    .last_error
+                    .clone()
+                    .unwrap_or_else(|| "Session closed.".to_string());
                 painter.text(
                     Pos2::new(rect.left() + 8.0, rect.bottom() - cell_h - 4.0),
                     Align2::LEFT_TOP,
@@ -434,10 +494,23 @@ fn pane_widget(
                     egui::Event::Copy => {
                         copy_now = true;
                     }
-                    egui::Event::Key { key, pressed: true, modifiers, .. } => {
+                    egui::Event::Key {
+                        key,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } => {
                         handle_key(
-                            ctx, state, session, *key, *modifiers, &mut out,
-                            &mut copy_now, &mut clear_search, events, data,
+                            ctx,
+                            state,
+                            session,
+                            *key,
+                            *modifiers,
+                            &mut out,
+                            &mut copy_now,
+                            &mut clear_search,
+                            events,
+                            data,
                         );
                     }
                     _ => {}
@@ -539,7 +612,11 @@ fn handle_key(
             if let Some(term) = state.terminals.get_mut(&session) {
                 let (_, rows) = state.term_sizes.get(&session).copied().unwrap_or((80, 24));
                 let delta = rows as i32 - 1;
-                term.scroll(if term_key == TermKey::PageUp { delta } else { -delta });
+                term.scroll(if term_key == TermKey::PageUp {
+                    delta
+                } else {
+                    -delta
+                });
             }
             return;
         }
@@ -614,14 +691,35 @@ fn map_special(key: egui::Key) -> Option<TermKey> {
 fn ctrl_letter(key: egui::Key) -> Option<u8> {
     use egui::Key;
     let c = match key {
-        Key::A => b'a', Key::B => b'b', Key::C => b'c', Key::D => b'd',
-        Key::E => b'e', Key::F => b'f', Key::G => b'g', Key::H => b'h',
-        Key::I => b'i', Key::J => b'j', Key::K => b'k', Key::L => b'l',
-        Key::M => b'm', Key::N => b'n', Key::O => b'o', Key::P => b'p',
-        Key::Q => b'q', Key::R => b'r', Key::S => b's', Key::T => b't',
-        Key::U => b'u', Key::V => b'v', Key::W => b'w', Key::X => b'x',
-        Key::Y => b'y', Key::Z => b'z',
-        Key::OpenBracket => b'[', Key::Backslash => b'\\', Key::CloseBracket => b']',
+        Key::A => b'a',
+        Key::B => b'b',
+        Key::C => b'c',
+        Key::D => b'd',
+        Key::E => b'e',
+        Key::F => b'f',
+        Key::G => b'g',
+        Key::H => b'h',
+        Key::I => b'i',
+        Key::J => b'j',
+        Key::K => b'k',
+        Key::L => b'l',
+        Key::M => b'm',
+        Key::N => b'n',
+        Key::O => b'o',
+        Key::P => b'p',
+        Key::Q => b'q',
+        Key::R => b'r',
+        Key::S => b's',
+        Key::T => b't',
+        Key::U => b'u',
+        Key::V => b'v',
+        Key::W => b'w',
+        Key::X => b'x',
+        Key::Y => b'y',
+        Key::Z => b'z',
+        Key::OpenBracket => b'[',
+        Key::Backslash => b'\\',
+        Key::CloseBracket => b']',
         _ => return None,
     };
     Some(ctrl_byte(c))
@@ -630,21 +728,44 @@ fn ctrl_letter(key: egui::Key) -> Option<u8> {
 fn key_letter(key: egui::Key) -> Option<char> {
     use egui::Key;
     Some(match key {
-        Key::A => 'a', Key::B => 'b', Key::C => 'c', Key::D => 'd',
-        Key::E => 'e', Key::F => 'f', Key::G => 'g', Key::H => 'h',
-        Key::I => 'i', Key::J => 'j', Key::K => 'k', Key::L => 'l',
-        Key::M => 'm', Key::N => 'n', Key::O => 'o', Key::P => 'p',
-        Key::Q => 'q', Key::R => 'r', Key::S => 's', Key::T => 't',
-        Key::U => 'u', Key::V => 'v', Key::W => 'w', Key::X => 'x',
-        Key::Y => 'y', Key::Z => 'z',
+        Key::A => 'a',
+        Key::B => 'b',
+        Key::C => 'c',
+        Key::D => 'd',
+        Key::E => 'e',
+        Key::F => 'f',
+        Key::G => 'g',
+        Key::H => 'h',
+        Key::I => 'i',
+        Key::J => 'j',
+        Key::K => 'k',
+        Key::L => 'l',
+        Key::M => 'm',
+        Key::N => 'n',
+        Key::O => 'o',
+        Key::P => 'p',
+        Key::Q => 'q',
+        Key::R => 'r',
+        Key::S => 's',
+        Key::T => 't',
+        Key::U => 'u',
+        Key::V => 'v',
+        Key::W => 'w',
+        Key::X => 'x',
+        Key::Y => 'y',
+        Key::Z => 'z',
         _ => return None,
     })
 }
 
 /// Copy the current selection to the clipboard.
 fn copy_selection(ctx: &egui::Context, state: &mut UiState, session: SessionId) {
-    let Some(sel) = state.selections.get(&session).copied() else { return };
-    let Some(term) = state.terminals.get(&session) else { return };
+    let Some(sel) = state.selections.get(&session).copied() else {
+        return;
+    };
+    let Some(term) = state.terminals.get(&session) else {
+        return;
+    };
     let ((r1, c1), (r2, c2)) = sel.normalized();
     // Colors don't matter for text extraction; pass dummies.
     let rendered = term.render(
@@ -661,7 +782,11 @@ fn copy_selection(ctx: &egui::Context, state: &mut UiState, session: SessionId) 
         }
         let line = &rendered.lines[r];
         let cs = if r == r1 { c1 } else { 0 };
-        let ce = if r == r2 { c2.saturating_add(1) } else { usize::MAX };
+        let ce = if r == r2 {
+            c2.saturating_add(1)
+        } else {
+            usize::MAX
+        };
         let mut line_text = String::new();
         for span in &line.spans {
             for (j, ch) in span.text.chars().enumerate() {

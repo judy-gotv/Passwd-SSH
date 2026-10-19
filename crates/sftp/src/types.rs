@@ -47,9 +47,30 @@ mod tests {
     #[test]
     fn dirs_sort_first() {
         let mut entries = vec![
-            FileEntry { name: "b.txt".into(), path: "/b.txt".into(), kind: FileKind::File, size: 1, modified_at: None, permissions: None },
-            FileEntry { name: "adir".into(), path: "/adir".into(), kind: FileKind::Directory, size: 0, modified_at: None, permissions: None },
-            FileEntry { name: "a.txt".into(), path: "/a.txt".into(), kind: FileKind::File, size: 1, modified_at: None, permissions: None },
+            FileEntry {
+                name: "b.txt".into(),
+                path: "/b.txt".into(),
+                kind: FileKind::File,
+                size: 1,
+                modified_at: None,
+                permissions: None,
+            },
+            FileEntry {
+                name: "adir".into(),
+                path: "/adir".into(),
+                kind: FileKind::Directory,
+                size: 0,
+                modified_at: None,
+                permissions: None,
+            },
+            FileEntry {
+                name: "a.txt".into(),
+                path: "/a.txt".into(),
+                kind: FileKind::File,
+                size: 1,
+                modified_at: None,
+                permissions: None,
+            },
         ];
         sort_entries(&mut entries);
         assert_eq!(entries[0].name, "adir");

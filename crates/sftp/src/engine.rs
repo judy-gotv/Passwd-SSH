@@ -39,7 +39,8 @@ pub trait SftpEngine: Send + Sync {
     async fn remove(&self, session: SessionId, path: &str) -> Result<(), SftpError>;
     async fn rename(&self, session: SessionId, from: &str, to: &str) -> Result<(), SftpError>;
     async fn upload(&self, task: TransferTask, progress: ProgressSender) -> Result<(), SftpError>;
-    async fn download(&self, task: TransferTask, progress: ProgressSender) -> Result<(), SftpError>;
+    async fn download(&self, task: TransferTask, progress: ProgressSender)
+    -> Result<(), SftpError>;
 }
 
 /// russh-sftp based engine.
@@ -52,12 +53,18 @@ pub struct RusshSftpEngine {
 impl RusshSftpEngine {
     /// Create an engine multiplexing over `ssh`.
     pub fn new(ssh: Arc<SessionManager>) -> Self {
-        Self { ssh, host_sessions: Arc::new(Mutex::new(HashMap::new())) }
+        Self {
+            ssh,
+            host_sessions: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     /// Bind a host to its active SSH session (call on connect).
     pub async fn link_host(&self, host_id: &str, session: SessionId) {
-        self.host_sessions.lock().await.insert(host_id.to_string(), session);
+        self.host_sessions
+            .lock()
+            .await
+            .insert(host_id.to_string(), session);
     }
 
     /// Unbind a host (call on disconnect).
@@ -82,18 +89,24 @@ impl RusshSftpEngine {
             .await
             .channel_open_session()
             .await
-            .map_err(|e| SftpError::Ssh(opsdeck_ssh::SshError::Channel(format!("sftp channel: {e}"))))?;
-        channel
-            .request_subsystem(true, "sftp")
-            .await
-            .map_err(|e| SftpError::Ssh(opsdeck_ssh::SshError::Channel(format!("sftp subsystem: {e}"))))?;
+            .map_err(|e| {
+                SftpError::Ssh(opsdeck_ssh::SshError::Channel(format!("sftp channel: {e}")))
+            })?;
+        channel.request_subsystem(true, "sftp").await.map_err(|e| {
+            SftpError::Ssh(opsdeck_ssh::SshError::Channel(format!(
+                "sftp subsystem: {e}"
+            )))
+        })?;
         let stream = channel.into_stream();
         SftpSession::new(stream).await.map_err(SftpError::from)
     }
 
     /// Emit progress no more often than ~4 Hz to avoid UI spam.
     fn progress_state() -> ProgressThrottle {
-        ProgressThrottle { last_emit: std::time::Instant::now(), last_done: 0 }
+        ProgressThrottle {
+            last_emit: std::time::Instant::now(),
+            last_done: 0,
+        }
     }
 }
 
@@ -115,7 +128,11 @@ impl ProgressThrottle {
         if force || elapsed.as_millis() >= 250 || done - self.last_done >= 256 * 1024 {
             self.last_emit = std::time::Instant::now();
             self.last_done = done;
-            let _ = tx.send(TransferProgress { task_id: task_id.to_string(), bytes_done: done, bytes_total: total });
+            let _ = tx.send(TransferProgress {
+                task_id: task_id.to_string(),
+                bytes_done: done,
+                bytes_total: total,
+            });
         }
     }
 }
@@ -197,13 +214,19 @@ impl SftpEngine for RusshSftpEngine {
         let total = local.metadata().await?.len();
 
         // Resume: if the remote file exists and is smaller, continue there.
-        let remote_size = sftp.metadata(&task.remote_path).await.map(|m| m.len()).unwrap_or(0);
+        let remote_size = sftp
+            .metadata(&task.remote_path)
+            .await
+            .map(|m| m.len())
+            .unwrap_or(0);
         let start = if remote_size < total { remote_size } else { 0 };
         if start > 0 {
             local.seek(std::io::SeekFrom::Start(start)).await?;
         }
         let mut remote = if start > 0 {
-            let mut f = sftp.open_with_flags(&task.remote_path, OpenFlags::WRITE).await?;
+            let mut f = sftp
+                .open_with_flags(&task.remote_path, OpenFlags::WRITE)
+                .await?;
             f.seek(std::io::SeekFrom::Start(start)).await?;
             f
         } else {
@@ -228,27 +251,39 @@ impl SftpEngine for RusshSftpEngine {
         Ok(())
     }
 
-    async fn download(&self, task: TransferTask, progress: ProgressSender) -> Result<(), SftpError> {
+    async fn download(
+        &self,
+        task: TransferTask,
+        progress: ProgressSender,
+    ) -> Result<(), SftpError> {
         let session = self.session_for_host(&task.host_id).await?;
         let sftp = self.open_sftp(session).await?;
 
         let total = sftp.metadata(&task.remote_path).await.map(|m| m.len()).ok();
 
         // Resume: if the local file exists and is smaller, continue there.
-        let local_size = tokio::fs::metadata(&task.local_path).await.map(|m| m.len()).unwrap_or(0);
+        let local_size = tokio::fs::metadata(&task.local_path)
+            .await
+            .map(|m| m.len())
+            .unwrap_or(0);
         let start = match total {
             Some(t) if local_size < t => local_size,
             _ if local_size > 0 && total.is_none() => 0, // unknown total: restart to be safe
             _ => 0,
         };
         let mut local = if start > 0 {
-            let mut f = tokio::fs::OpenOptions::new().write(true).open(&task.local_path).await?;
+            let mut f = tokio::fs::OpenOptions::new()
+                .write(true)
+                .open(&task.local_path)
+                .await?;
             f.seek(std::io::SeekFrom::Start(start)).await?;
             f
         } else {
             tokio::fs::File::create(&task.local_path).await?
         };
-        let mut remote = sftp.open_with_flags(&task.remote_path, OpenFlags::READ).await?;
+        let mut remote = sftp
+            .open_with_flags(&task.remote_path, OpenFlags::READ)
+            .await?;
         if start > 0 {
             remote.seek(std::io::SeekFrom::Start(start)).await?;
         }

@@ -6,9 +6,9 @@
 //! Author: Passwd Word
 
 use russh::auth::Signer;
-use russh::keys::agent::client::{AgentClient, AgentStream};
-use russh::keys::agent::AgentIdentity;
 use russh::keys::HashAlg;
+use russh::keys::agent::AgentIdentity;
+use russh::keys::agent::client::{AgentClient, AgentStream};
 
 use crate::{ClientHandle, SshError};
 
@@ -50,7 +50,9 @@ pub async fn authenticate_agent(handle: &mut ClientHandle, username: &str) -> Re
         .map_err(|e| SshError::Agent(format!("cannot reach Pageant: {e}")))?;
 
     #[cfg(not(any(unix, windows)))]
-    return Err(SshError::Agent("ssh-agent is not supported on this platform".into()));
+    return Err(SshError::Agent(
+        "ssh-agent is not supported on this platform".into(),
+    ));
 
     let identities = agent
         .request_identities()
@@ -68,7 +70,10 @@ pub async fn authenticate_agent(handle: &mut ClientHandle, username: &str) -> Re
             AgentIdentity::Certificate { .. } => continue,
         };
         tried += 1;
-        let mut signer = AgentSigner { agent: &mut agent, identity };
+        let mut signer = AgentSigner {
+            agent: &mut agent,
+            identity,
+        };
         match handle
             .authenticate_publickey_with(username, key, None, &mut signer)
             .await

@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use opsdeck_storage::models::{TransferDirection, TransferStatus, TransferTask, new_id, now_unix};
 use opsdeck_storage::Storage;
+use opsdeck_storage::models::{TransferDirection, TransferStatus, TransferTask, new_id, now_unix};
 use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
 
@@ -51,7 +51,12 @@ impl TransferQueue {
         storage: Storage,
         event_tx: mpsc::UnboundedSender<QueueEvent>,
     ) -> Self {
-        Self { engine, storage, workers: Arc::new(Mutex::new(HashMap::new())), event_tx }
+        Self {
+            engine,
+            storage,
+            workers: Arc::new(Mutex::new(HashMap::new())),
+            event_tx,
+        }
     }
 
     /// Build a new task record (not yet persisted / started).
@@ -90,7 +95,13 @@ impl TransferQueue {
         let task = self.storage.transfers().get(task_id).await?;
         self.storage
             .transfers()
-            .update_progress(task_id, TransferStatus::Pending, task.bytes_done, task.bytes_total, None)
+            .update_progress(
+                task_id,
+                TransferStatus::Pending,
+                task.bytes_done,
+                task.bytes_total,
+                None,
+            )
             .await?;
         self.spawn_worker(task).await;
         Ok(())
@@ -102,7 +113,13 @@ impl TransferQueue {
         let task = self.storage.transfers().get(task_id).await?;
         self.storage
             .transfers()
-            .update_progress(task_id, TransferStatus::Paused, task.bytes_done, task.bytes_total, None)
+            .update_progress(
+                task_id,
+                TransferStatus::Paused,
+                task.bytes_done,
+                task.bytes_total,
+                None,
+            )
             .await?;
         Ok(SshPauseOutcome::Paused)
     }
@@ -113,7 +130,13 @@ impl TransferQueue {
         let task = self.storage.transfers().get(task_id).await?;
         self.storage
             .transfers()
-            .update_progress(task_id, TransferStatus::Canceled, task.bytes_done, task.bytes_total, None)
+            .update_progress(
+                task_id,
+                TransferStatus::Canceled,
+                task.bytes_done,
+                task.bytes_total,
+                None,
+            )
             .await?;
         Ok(())
     }
@@ -125,7 +148,13 @@ impl TransferQueue {
             if task.status == TransferStatus::Running.as_str() {
                 self.storage
                     .transfers()
-                    .update_progress(&task.id, TransferStatus::Paused, task.bytes_done, task.bytes_total, None)
+                    .update_progress(
+                        &task.id,
+                        TransferStatus::Paused,
+                        task.bytes_done,
+                        task.bytes_total,
+                        None,
+                    )
                     .await?;
             }
         }
@@ -168,7 +197,13 @@ impl TransferQueue {
                     fwd_done.store(p.bytes_done, Ordering::Relaxed);
                     fwd_storage
                         .transfers()
-                        .update_progress(&p.task_id, TransferStatus::Running, p.bytes_done as i64, p.bytes_total.map(|b| b as i64), None)
+                        .update_progress(
+                            &p.task_id,
+                            TransferStatus::Running,
+                            p.bytes_done as i64,
+                            p.bytes_total.map(|b| b as i64),
+                            None,
+                        )
                         .await
                         .ok();
                     let _ = fwd_events.send(QueueEvent::Progress {
@@ -182,7 +217,9 @@ impl TransferQueue {
             let direction = task_direction(&task);
             let result: Result<(), SftpError> = match direction {
                 Some(TransferDirection::Upload) => engine.upload(task.clone(), ptx.clone()).await,
-                Some(TransferDirection::Download) => engine.download(task.clone(), ptx.clone()).await,
+                Some(TransferDirection::Download) => {
+                    engine.download(task.clone(), ptx.clone()).await
+                }
                 None => Err(SftpError::Io(format!("bad direction: {}", task.direction))),
             };
 
@@ -193,7 +230,8 @@ impl TransferQueue {
             // Don't overwrite a pause/cancel that raced us.
             let current = storage.transfers().get(&id).await.ok();
             let raced = current.as_ref().is_some_and(|t| {
-                t.status == TransferStatus::Paused.as_str() || t.status == TransferStatus::Canceled.as_str()
+                t.status == TransferStatus::Paused.as_str()
+                    || t.status == TransferStatus::Canceled.as_str()
             });
             if !raced {
                 let (status, err) = match &result {
@@ -202,7 +240,13 @@ impl TransferQueue {
                 };
                 storage
                     .transfers()
-                    .update_progress(&id, status, done, current.and_then(|t| t.bytes_total), err.as_deref())
+                    .update_progress(
+                        &id,
+                        status,
+                        done,
+                        current.and_then(|t| t.bytes_total),
+                        err.as_deref(),
+                    )
                     .await
                     .ok();
                 let _ = event_tx.send(QueueEvent::Finished {

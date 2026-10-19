@@ -1465,6 +1465,7 @@ impl OpsDeckApp {
             let _ = tx.send(AppMsg::SyncDone { result });
         });
     }
+}
 
 impl eframe::App for OpsDeckApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {

@@ -16,14 +16,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use opsdeck_storage::models::{now_unix, Host, HostGroup, Snippet};
 use opsdeck_storage::Storage;
+use opsdeck_storage::models::{Host, HostGroup, Snippet, now_unix};
 use opsdeck_vault::Vault;
 use serde::{Deserialize, Serialize};
 
 use crate::conflict::resolve;
 use crate::error::SyncError;
-use crate::http::{http_request, HttpResponse};
+use crate::http::{HttpResponse, http_request};
 use crate::model::{SyncCollection, SyncEntity, SyncRecord, SyncSummary, open_entity};
 
 // ---------------------------------------------------------------------------
@@ -86,13 +86,18 @@ impl Remote for FileRemote {
             Ok(e) => e,
             Err(_) => return Ok(out), // no dir yet → nothing to pull
         };
-        while let Some(entry) = entries.next_entry().await.map_err(|e| SyncError::Io(e.to_string()))? {
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| SyncError::Io(e.to_string()))?
+        {
             if entry.path().extension().and_then(|s| s.to_str()) != Some("json") {
                 continue;
             }
             let data = tokio::fs::read(entry.path()).await?;
-            let record: SyncRecord = serde_json::from_slice(&data)
-                .map_err(|e| SyncError::Malformed(entry.path().display().to_string(), e.to_string()))?;
+            let record: SyncRecord = serde_json::from_slice(&data).map_err(|e| {
+                SyncError::Malformed(entry.path().display().to_string(), e.to_string())
+            })?;
             if record.updated_at > since {
                 out.push(record);
             }
@@ -124,12 +129,18 @@ pub struct HttpRemote {
 impl HttpRemote {
     /// Create an unconfigured remote (sync disabled until configured).
     pub fn unconfigured(device_id: &str) -> Self {
-        Self { endpoint: None, device_id: device_id.to_string() }
+        Self {
+            endpoint: None,
+            device_id: device_id.to_string(),
+        }
     }
 
     /// Create a remote pointed at a sync server, e.g. `https://sync.example.com`.
     pub fn with_endpoint(endpoint: &str, device_id: &str) -> Self {
-        Self { endpoint: Some(endpoint.trim_end_matches('/').to_string()), device_id: device_id.to_string() }
+        Self {
+            endpoint: Some(endpoint.trim_end_matches('/').to_string()),
+            device_id: device_id.to_string(),
+        }
     }
 
     /// Check server reachability.
@@ -149,7 +160,10 @@ impl Remote for HttpRemote {
             device_id: &'a str,
             records: &'a [SyncRecord],
         }
-        let body = serde_json::to_vec(&PushBody { device_id: &self.device_id, records })?;
+        let body = serde_json::to_vec(&PushBody {
+            device_id: &self.device_id,
+            records,
+        })?;
         let resp: HttpResponse =
             http_request("POST", &format!("{endpoint}/v1/push"), Some(&body), &[]).await?;
         if resp.status != 200 {
@@ -160,7 +174,13 @@ impl Remote for HttpRemote {
 
     async fn pull(&self, since: i64) -> Result<Vec<SyncRecord>, SyncError> {
         let endpoint = self.endpoint.as_deref().ok_or(SyncError::NotConfigured)?;
-        let resp = http_request("GET", &format!("{endpoint}/v1/pull?since={since}"), None, &[]).await?;
+        let resp = http_request(
+            "GET",
+            &format!("{endpoint}/v1/pull?since={since}"),
+            None,
+            &[],
+        )
+        .await?;
         if resp.status != 200 {
             return Err(SyncError::Remote(format!("pull -> HTTP {}", resp.status)));
         }
@@ -206,7 +226,9 @@ async fn load_manifest(storage: &Storage) -> Result<Manifest, SyncError> {
 }
 
 async fn save_manifest(storage: &Storage, manifest: &Manifest) -> Result<(), SyncError> {
-    storage.set_setting(MANIFEST_KEY, &serde_json::to_string(manifest)?).await?;
+    storage
+        .set_setting(MANIFEST_KEY, &serde_json::to_string(manifest)?)
+        .await?;
     Ok(())
 }
 
@@ -230,13 +252,28 @@ async fn export_all(
     // (collection, entity_id, updated_at, entity json value)
     let mut entities: Vec<(SyncCollection, String, i64, serde_json::Value)> = Vec::new();
     for h in &hosts {
-        entities.push((SyncCollection::Hosts, h.id.clone(), h.updated_at, serde_json::to_value(h)?));
+        entities.push((
+            SyncCollection::Hosts,
+            h.id.clone(),
+            h.updated_at,
+            serde_json::to_value(h)?,
+        ));
     }
     for g in &groups {
-        entities.push((SyncCollection::HostGroups, g.id.clone(), g.created_at, serde_json::to_value(g)?));
+        entities.push((
+            SyncCollection::HostGroups,
+            g.id.clone(),
+            g.created_at,
+            serde_json::to_value(g)?,
+        ));
     }
     for s in &snippets {
-        entities.push((SyncCollection::Snippets, s.id.clone(), s.updated_at, serde_json::to_value(s)?));
+        entities.push((
+            SyncCollection::Snippets,
+            s.id.clone(),
+            s.updated_at,
+            serde_json::to_value(s)?,
+        ));
     }
 
     let mut live_ids = std::collections::HashSet::new();
@@ -258,17 +295,30 @@ async fn export_all(
                 device_id,
                 &value,
             )?;
-            manifest.insert(record_id, ManifestEntry { version: record.version, updated_at });
+            manifest.insert(
+                record_id,
+                ManifestEntry {
+                    version: record.version,
+                    updated_at,
+                },
+            );
             records.push(record);
         }
     }
 
     // Tombstones for entities deleted locally since the last sync.
-    let tombstoned: Vec<String> =
-        manifest.keys().filter(|id| !live_ids.contains(*id)).cloned().collect();
+    let tombstoned: Vec<String> = manifest
+        .keys()
+        .filter(|id| !live_ids.contains(*id))
+        .cloned()
+        .collect();
     for record_id in tombstoned {
-        let Some((collection, entity_id)) = record_id.split_once(':') else { continue };
-        let Some(collection) = SyncCollection::from_str(collection) else { continue };
+        let Some((collection, entity_id)) = record_id.split_once(':') else {
+            continue;
+        };
+        let Some(collection) = SyncCollection::from_str(collection) else {
+            continue;
+        };
         let now = now_unix();
         let record = SyncRecord::seal(
             vault,
@@ -280,7 +330,13 @@ async fn export_all(
             device_id,
             &serde_json::Value::Null,
         )?;
-        manifest.insert(record_id, ManifestEntry { version: record.version, updated_at: now });
+        manifest.insert(
+            record_id,
+            ManifestEntry {
+                version: record.version,
+                updated_at: now,
+            },
+        );
         records.push(record);
     }
 
@@ -303,7 +359,11 @@ async fn apply_records(
     records: &[SyncRecord],
     manifest: &mut Manifest,
 ) -> Result<ApplySummary, SyncError> {
-    let mut summary = ApplySummary { applied: 0, conflicts: 0, errors: Vec::new() };
+    let mut summary = ApplySummary {
+        applied: 0,
+        conflicts: 0,
+        errors: Vec::new(),
+    };
 
     for record in records {
         let entry = manifest.get(&record.id).cloned().unwrap_or_default();
@@ -321,7 +381,13 @@ async fn apply_records(
 
         if record.deleted {
             apply_delete(storage, &record.collection, &record.entity_id).await;
-            manifest.insert(record.id.clone(), ManifestEntry { version: record.version, updated_at: record.updated_at });
+            manifest.insert(
+                record.id.clone(),
+                ManifestEntry {
+                    version: record.version,
+                    updated_at: record.updated_at,
+                },
+            );
             summary.applied += 1;
             continue;
         }
@@ -350,7 +416,13 @@ async fn apply_records(
         if remote_wins {
             match apply_upsert(storage, entity).await {
                 Ok(()) => {
-                    manifest.insert(record.id.clone(), ManifestEntry { version: record.version, updated_at: record.updated_at });
+                    manifest.insert(
+                        record.id.clone(),
+                        ManifestEntry {
+                            version: record.version,
+                            updated_at: record.updated_at,
+                        },
+                    );
                     summary.applied += 1;
                 }
                 Err(e) => summary.errors.push(format!("{}: {e}", record.id)),
@@ -359,7 +431,10 @@ async fn apply_records(
             // Local wins: keep the manifest version so we re-export it.
             manifest.insert(
                 record.id.clone(),
-                ManifestEntry { version: entry.version, updated_at: entry.updated_at },
+                ManifestEntry {
+                    version: entry.version,
+                    updated_at: entry.updated_at,
+                },
             );
         }
     }
@@ -373,11 +448,23 @@ async fn local_updated_at(
     entity_id: &str,
 ) -> Result<Option<i64>, SyncError> {
     let ts = match collection {
-        "hosts" => storage.hosts().get(entity_id).await.ok().map(|h| h.updated_at),
+        "hosts" => storage
+            .hosts()
+            .get(entity_id)
+            .await
+            .ok()
+            .map(|h| h.updated_at),
         "host_groups" => storage.groups().list_all().await.ok().and_then(|gs| {
-            gs.into_iter().find(|g| g.id == entity_id).map(|g| g.created_at)
+            gs.into_iter()
+                .find(|g| g.id == entity_id)
+                .map(|g| g.created_at)
         }),
-        "snippets" => storage.snippets().get(entity_id).await.ok().map(|s| s.updated_at),
+        "snippets" => storage
+            .snippets()
+            .get(entity_id)
+            .await
+            .ok()
+            .map(|s| s.updated_at),
         _ => None,
     };
     Ok(ts)
@@ -393,8 +480,22 @@ async fn apply_upsert(storage: &Storage, entity: SyncEntity) -> Result<(), SyncE
             }
         }
         SyncEntity::HostGroup(g) => {
-            if storage.groups().list_all().await?.iter().any(|x| x.id == g.id) {
-                if storage.groups().list_all().await?.iter().find(|x| x.id == g.id).map(|x| &x.name) != Some(&g.name) {
+            if storage
+                .groups()
+                .list_all()
+                .await?
+                .iter()
+                .any(|x| x.id == g.id)
+            {
+                if storage
+                    .groups()
+                    .list_all()
+                    .await?
+                    .iter()
+                    .find(|x| x.id == g.id)
+                    .map(|x| &x.name)
+                    != Some(&g.name)
+                {
                     storage.groups().rename(&g.id, &g.name).await?;
                 }
             } else {
@@ -441,7 +542,11 @@ pub struct SyncEngine {
 impl SyncEngine {
     /// Create an engine. `device_id` should be stable per installation.
     pub fn new(remote: Arc<dyn Remote>, storage: Storage, device_id: String) -> Self {
-        Self { remote, storage, device_id }
+        Self {
+            remote,
+            storage,
+            device_id,
+        }
     }
 
     /// The configured remote's name.
@@ -457,13 +562,15 @@ impl SyncEngine {
         let mut manifest = load_manifest(&self.storage).await?;
 
         // 1-2. Export local changes and push them.
-        let local_records = export_all(vault, &self.storage, &self.device_id, &mut manifest).await?;
+        let local_records =
+            export_all(vault, &self.storage, &self.device_id, &mut manifest).await?;
         let pushed = local_records.len();
         self.remote.push(&local_records).await?;
         save_manifest(&self.storage, &manifest).await?;
 
         // 3-4. Pull remote changes and apply.
-        let since: i64 = self.storage
+        let since: i64 = self
+            .storage
             .get_setting(WATERMARK_KEY)
             .await?
             .and_then(|s| s.parse().ok())
@@ -472,7 +579,9 @@ impl SyncEngine {
         let pulled = remote_records.len();
         let applied = apply_records(vault, &self.storage, &remote_records, &mut manifest).await?;
         save_manifest(&self.storage, &manifest).await?;
-        self.storage.set_setting(WATERMARK_KEY, &now_unix().to_string()).await?;
+        self.storage
+            .set_setting(WATERMARK_KEY, &now_unix().to_string())
+            .await?;
 
         Ok(SyncSummary {
             pushed,
@@ -485,7 +594,8 @@ impl SyncEngine {
 
     /// Last successful sync time (unix seconds), if any.
     pub async fn last_sync_at(&self) -> Result<Option<i64>, SyncError> {
-        Ok(self.storage
+        Ok(self
+            .storage
             .get_setting(WATERMARK_KEY)
             .await?
             .and_then(|s| s.parse().ok()))
@@ -596,7 +706,10 @@ mod tests {
             storage,
             "dev".into(),
         );
-        assert!(matches!(engine.sync(&vault).await, Err(SyncError::NotConfigured)));
+        assert!(matches!(
+            engine.sync(&vault).await,
+            Err(SyncError::NotConfigured)
+        ));
         assert!(!engine.remote.is_configured());
     }
 }

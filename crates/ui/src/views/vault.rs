@@ -87,7 +87,9 @@ fn try_create(state: &mut UiState, events: &mut Vec<UiEvent>) {
         return;
     }
     state.unlock_error = None;
-    events.push(UiEvent::CreateVault(std::mem::take(&mut state.password_input)));
+    events.push(UiEvent::CreateVault(std::mem::take(
+        &mut state.password_input,
+    )));
     state.password_confirm.clear();
 }
 
@@ -96,5 +98,7 @@ fn try_unlock(state: &mut UiState, events: &mut Vec<UiEvent>) {
         return;
     }
     state.unlock_error = None;
-    events.push(UiEvent::UnlockVault(std::mem::take(&mut state.password_input)));
+    events.push(UiEvent::UnlockVault(std::mem::take(
+        &mut state.password_input,
+    )));
 }

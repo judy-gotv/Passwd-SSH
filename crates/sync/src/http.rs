@@ -28,7 +28,10 @@ impl HttpResponse {
 
     /// Header value (case-insensitive name), if present.
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
+        self.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
     }
 }
 
@@ -64,7 +67,12 @@ fn parse_url(url: &str) -> Result<ParsedUrl, SyncError> {
         ),
         None => (authority.to_string(), if https { 443 } else { 80 }),
     };
-    Ok(ParsedUrl { https, host, port, path })
+    Ok(ParsedUrl {
+        https,
+        host,
+        port,
+        path,
+    })
 }
 
 fn tls_connector() -> Result<tokio_rustls::TlsConnector, SyncError> {
@@ -128,14 +136,25 @@ pub async fn http_request(
         req.push_str(&format!("{k}: {v}\r\n"));
     }
     if body_len > 0 {
-        req.push_str(&format!("Content-Length: {body_len}\r\nContent-Type: application/json\r\n"));
+        req.push_str(&format!(
+            "Content-Length: {body_len}\r\nContent-Type: application/json\r\n"
+        ));
     }
     req.push_str("\r\n");
-    stream.write_all(req.as_bytes()).await.map_err(|e| SyncError::Remote(format!("write request: {e}")))?;
+    stream
+        .write_all(req.as_bytes())
+        .await
+        .map_err(|e| SyncError::Remote(format!("write request: {e}")))?;
     if let Some(b) = body {
-        stream.write_all(b).await.map_err(|e| SyncError::Remote(format!("write body: {e}")))?;
+        stream
+            .write_all(b)
+            .await
+            .map_err(|e| SyncError::Remote(format!("write body: {e}")))?;
     }
-    stream.flush().await.map_err(|e| SyncError::Remote(format!("flush: {e}")))?;
+    stream
+        .flush()
+        .await
+        .map_err(|e| SyncError::Remote(format!("flush: {e}")))?;
 
     read_response(&mut stream).await
 }
@@ -177,9 +196,9 @@ async fn read_response(
         }
     }
 
-    let is_chunked = headers
-        .iter()
-        .any(|(k, v)| k.eq_ignore_ascii_case("transfer-encoding") && v.eq_ignore_ascii_case("chunked"));
+    let is_chunked = headers.iter().any(|(k, v)| {
+        k.eq_ignore_ascii_case("transfer-encoding") && v.eq_ignore_ascii_case("chunked")
+    });
     let content_length: Option<usize> = headers
         .iter()
         .find(|(k, _)| k.eq_ignore_ascii_case("content-length"))
@@ -190,7 +209,10 @@ async fn read_response(
         body = read_chunked(stream, body).await?;
     } else if let Some(len) = content_length {
         while body.len() < len {
-            let n = stream.read(&mut tmp).await.map_err(|e| SyncError::Remote(format!("read body: {e}")))?;
+            let n = stream
+                .read(&mut tmp)
+                .await
+                .map_err(|e| SyncError::Remote(format!("read body: {e}")))?;
             if n == 0 {
                 break;
             }
@@ -201,7 +223,10 @@ async fn read_response(
     } else {
         // No length framing: read until close.
         loop {
-            let n = stream.read(&mut tmp).await.map_err(|e| SyncError::Remote(format!("read body: {e}")))?;
+            let n = stream
+                .read(&mut tmp)
+                .await
+                .map_err(|e| SyncError::Remote(format!("read body: {e}")))?;
             if n == 0 {
                 break;
             }
@@ -212,7 +237,11 @@ async fn read_response(
         }
     }
 
-    Ok(HttpResponse { status, headers, body })
+    Ok(HttpResponse {
+        status,
+        headers,
+        body,
+    })
 }
 
 async fn read_chunked(
@@ -227,7 +256,10 @@ async fn read_chunked(
             if let Some(pos) = find_crlf(&buf) {
                 break pos;
             }
-            let n = stream.read(&mut tmp).await.map_err(|e| SyncError::Remote(format!("read chunk: {e}")))?;
+            let n = stream
+                .read(&mut tmp)
+                .await
+                .map_err(|e| SyncError::Remote(format!("read chunk: {e}")))?;
             if n == 0 {
                 return Err(SyncError::Remote("eof in chunked encoding".into()));
             }
@@ -241,7 +273,10 @@ async fn read_chunked(
             break;
         }
         while buf.len() < size + 2 {
-            let n = stream.read(&mut tmp).await.map_err(|e| SyncError::Remote(format!("read chunk: {e}")))?;
+            let n = stream
+                .read(&mut tmp)
+                .await
+                .map_err(|e| SyncError::Remote(format!("read chunk: {e}")))?;
             if n == 0 {
                 return Err(SyncError::Remote("eof in chunked body".into()));
             }
@@ -265,7 +300,10 @@ fn find_crlf(buf: &[u8]) -> Option<usize> {
 pub async fn http_get_text(url: &str) -> Result<String, SyncError> {
     let resp = http_request("GET", url, None, &[]).await?;
     if !(200..300).contains(&resp.status) {
-        return Err(SyncError::Remote(format!("GET {url} -> HTTP {}", resp.status)));
+        return Err(SyncError::Remote(format!(
+            "GET {url} -> HTTP {}",
+            resp.status
+        )));
     }
     Ok(resp.text())
 }
@@ -321,8 +359,14 @@ mod tests {
             let (mut sock, _) = listener.accept().await.unwrap();
             let mut buf = [0u8; 1024];
             let _ = sock.read(&mut buf).await;
-            sock.write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n").await.unwrap();
-            sock.write_all(b"5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n").await.unwrap();
+            sock.write_all(
+                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n",
+            )
+            .await
+            .unwrap();
+            sock.write_all(b"5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n")
+                .await
+                .unwrap();
         });
         let url = format!("http://{addr}/chunked");
         let text = http_get_text(&url).await.unwrap();

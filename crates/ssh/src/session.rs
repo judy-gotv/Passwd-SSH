@@ -105,7 +105,10 @@ impl KnownHostsDb {
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
-        Self { path: path.to_path_buf(), keys }
+        Self {
+            path: path.to_path_buf(),
+            keys,
+        }
     }
 
     fn lookup(&self, id: &str) -> Option<&str> {
@@ -151,7 +154,9 @@ impl SessionHandler {
             changed,
             responder: tx,
         };
-        self.prompt_tx.send(prompt).map_err(|_| SshError::HostKeyRejected)?;
+        self.prompt_tx
+            .send(prompt)
+            .map_err(|_| SshError::HostKeyRejected)?;
 
         // The user gets two minutes; silence means rejection.
         match tokio::time::timeout(Duration::from_secs(120), rx).await {
@@ -191,7 +196,13 @@ impl Handler for SessionHandler {
             .to_string();
         let id = format!("{}:{}", self.host, self.port);
 
-        let known = { self.known_hosts.lock().await.lookup(&id).map(str::to_string) };
+        let known = {
+            self.known_hosts
+                .lock()
+                .await
+                .lookup(&id)
+                .map(str::to_string)
+        };
         match known {
             Some(k) if k == openssh => Ok(true),
             Some(_) => {
@@ -313,7 +324,9 @@ impl SessionManager {
     /// - `known_hosts_path`: JSON file persisting trusted host keys (TOFU).
     pub fn new(prompt_tx: mpsc::UnboundedSender<HostKeyPrompt>, known_hosts_path: &Path) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(ManagerInner { sessions: HashMap::new() })),
+            inner: Arc::new(Mutex::new(ManagerInner {
+                sessions: HashMap::new(),
+            })),
             prompt_tx,
             known_hosts: Arc::new(Mutex::new(KnownHostsDb::load(known_hosts_path))),
         }
@@ -370,7 +383,9 @@ impl SessionManager {
         if !s.state.is_usable() {
             return Err(SshError::NotReady(format!("session is {:?}", s.state)));
         }
-        s.handle.clone().ok_or(SshError::NotReady("no transport handle".into()))
+        s.handle
+            .clone()
+            .ok_or(SshError::NotReady("no transport handle".into()))
     }
 
     /// Current state of a session.
@@ -434,19 +449,16 @@ impl SessionManager {
         let channel = jump
             .lock()
             .await
-            .channel_open_direct_tcpip(
-                config.host.as_str(),
-                config.port as u32,
-                "127.0.0.1",
-                0,
-            )
+            .channel_open_direct_tcpip(config.host.as_str(), config.port as u32, "127.0.0.1", 0)
             .await
             .map_err(|e| SshError::Connection(format!("proxyjump channel failed: {e}")))?;
         let stream = channel.into_stream();
         let handler = self.handler_for(config);
         russh::client::connect_stream(Self::russh_config(), stream, handler)
             .await
-            .map_err(|e: SshError| SshError::Connection(format!("connect via jump host failed: {e}")))
+            .map_err(|e: SshError| {
+                SshError::Connection(format!("connect via jump host failed: {e}"))
+            })
     }
 
     async fn authenticate(
@@ -472,7 +484,8 @@ impl SessionManager {
                 )
                 .map_err(|e| SshError::Key(format!("cannot parse private key: {e}")))?;
                 let key = russh::keys::PrivateKeyWithHashAlg::new(std::sync::Arc::new(key), None);
-                h.authenticate_publickey(config.username.clone(), key).await?
+                h.authenticate_publickey(config.username.clone(), key)
+                    .await?
             }
             AuthMethod::Agent => {
                 drop(h);
@@ -516,7 +529,8 @@ impl SessionManager {
                     let shared = Arc::new(Mutex::new(h));
                     self.set_state(id, SessionState::Connected, None).await;
                     if let Err(e) = self.authenticate(&shared, jump_cfg, creds).await {
-                        self.set_state(id, SessionState::Failed, Some(e.to_string())).await;
+                        self.set_state(id, SessionState::Failed, Some(e.to_string()))
+                            .await;
                         return Err(e);
                     }
                     self.set_ready(id, shared.clone()).await;
@@ -524,7 +538,8 @@ impl SessionManager {
                     prev_id = Some(id);
                 }
                 Err(e) => {
-                    self.set_state(id, SessionState::Failed, Some(e.to_string())).await;
+                    self.set_state(id, SessionState::Failed, Some(e.to_string()))
+                        .await;
                     return Err(e);
                 }
             }
@@ -539,14 +554,16 @@ impl SessionManager {
         let handle = match handle {
             Ok(h) => h,
             Err(e) => {
-                self.set_state(id, SessionState::Failed, Some(e.to_string())).await;
+                self.set_state(id, SessionState::Failed, Some(e.to_string()))
+                    .await;
                 return Err(e);
             }
         };
         let shared = Arc::new(Mutex::new(handle));
         self.set_state(id, SessionState::Connected, None).await;
         if let Err(e) = self.authenticate(&shared, target, creds).await {
-            self.set_state(id, SessionState::Failed, Some(e.to_string())).await;
+            self.set_state(id, SessionState::Failed, Some(e.to_string()))
+                .await;
             return Err(e);
         }
         self.set_ready(id, shared).await;
@@ -559,7 +576,8 @@ impl SessionManager {
         config: &HostConfig,
         creds: &dyn CredentialProvider,
     ) -> Result<SessionId, SshError> {
-        self.connect_chain(std::slice::from_ref(config), creds).await
+        self.connect_chain(std::slice::from_ref(config), creds)
+            .await
     }
 
     /// Open an interactive shell on a ready session.
@@ -627,12 +645,17 @@ impl SessionManager {
             let _ = event_tx.send(ShellEvent::Closed);
         });
 
-        Ok(ShellChannel { events: event_rx, commands: cmd_tx, _task: task })
+        Ok(ShellChannel {
+            events: event_rx,
+            commands: cmd_tx,
+            _task: task,
+        })
     }
 
     /// Run a one-shot command and collect its output.
     pub async fn exec(&self, id: SessionId, command: &str) -> Result<ExecOutput, SshError> {
-        self.exec_timeout(id, command, Duration::from_secs(120)).await
+        self.exec_timeout(id, command, Duration::from_secs(120))
+            .await
     }
 
     /// Run a one-shot command with an explicit timeout.
@@ -694,7 +717,9 @@ impl SessionManager {
 
         let task = tokio::spawn(async move {
             loop {
-                let Ok((inbound, peer)) = listener.accept().await else { break };
+                let Ok((inbound, peer)) = listener.accept().await else {
+                    break;
+                };
                 let handle = handle.clone();
                 let remote_host = remote_host.clone();
                 tokio::spawn(async move {
@@ -735,7 +760,10 @@ impl SessionManager {
     pub async fn disconnect(&self, id: SessionId) -> Result<(), SshError> {
         let handle = {
             let mut inner = self.inner.lock().await;
-            let s = inner.sessions.remove(&id).ok_or(SshError::SessionNotFound)?;
+            let s = inner
+                .sessions
+                .remove(&id)
+                .ok_or(SshError::SessionNotFound)?;
             s.handle
         };
         if let Some(h) = handle {
@@ -756,7 +784,12 @@ impl SessionManager {
     ) -> Result<SessionId, SshError> {
         let config = {
             let inner = self.inner.lock().await;
-            inner.sessions.get(&id).ok_or(SshError::SessionNotFound)?.config.clone()
+            inner
+                .sessions
+                .get(&id)
+                .ok_or(SshError::SessionNotFound)?
+                .config
+                .clone()
         };
         self.set_state(id, SessionState::Reconnecting, None).await;
         let _ = self.disconnect(id).await;

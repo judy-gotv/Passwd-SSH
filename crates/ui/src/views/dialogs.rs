@@ -7,7 +7,12 @@ use opsdeck_ssh::HostKeyDecision;
 use crate::{HostForm, UiData, UiEvent, UiState};
 
 /// Draw all dialogs.
-pub fn show_all(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+pub fn show_all(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    data: &UiData,
+    events: &mut Vec<UiEvent>,
+) {
     host_key_prompts(ctx, state, data, events);
     if state.show_host_editor {
         host_editor(ctx, state, data, events);
@@ -27,7 +32,12 @@ pub fn show_all(ctx: &egui::Context, state: &mut UiState, data: &UiData, events:
 // Host-key approval
 // ---------------------------------------------------------------------------
 
-fn host_key_prompts(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+fn host_key_prompts(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    data: &UiData,
+    events: &mut Vec<UiEvent>,
+) {
     for prompt in data.key_prompts {
         let mut decision: Option<HostKeyDecision> = None;
         egui::Window::new(format!("SSH host key: {}:{}", prompt.host, prompt.port))
@@ -67,7 +77,10 @@ fn host_key_prompts(ctx: &egui::Context, state: &mut UiState, data: &UiData, eve
             });
         if let Some(d) = decision {
             let _ = state;
-            events.push(UiEvent::HostKeyDecision { prompt_id: prompt.id, decision: d });
+            events.push(UiEvent::HostKeyDecision {
+                prompt_id: prompt.id,
+                decision: d,
+            });
         }
     }
 }
@@ -87,73 +100,89 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
         .default_width(440.0)
         .show(ctx, |ui| {
             let f = &mut state.host_form;
-            egui::Grid::new("host_form_grid").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
-                ui.label("Name:");
-                ui.text_edit_singleline(&mut f.name);
-                ui.end_row();
-                ui.label("Host:");
-                ui.text_edit_singleline(&mut f.host);
-                ui.end_row();
-                ui.label("Port:");
-                ui.text_edit_singleline(&mut f.port);
-                ui.end_row();
-                ui.label("Username:");
-                ui.text_edit_singleline(&mut f.username);
-                ui.end_row();
-                ui.label("Group:");
-                egui::ComboBox::from_id_salt("host_form_group")
-                    .selected_text(
-                        data.groups
-                            .iter()
-                            .find(|g| g.id == f.group_id)
-                            .map(|g| g.name.clone())
-                            .unwrap_or_else(|| "— none —".to_string()),
-                    )
-                    .show_ui(ui, |ui| {
-                        if ui.selectable_label(f.group_id.is_empty(), "— none —").clicked() {
-                            f.group_id.clear();
-                        }
-                        for g in data.groups {
-                            if ui.selectable_label(f.group_id == g.id, &g.name).clicked() {
-                                f.group_id = g.id.clone();
+            egui::Grid::new("host_form_grid")
+                .num_columns(2)
+                .spacing([8.0, 6.0])
+                .show(ui, |ui| {
+                    ui.label("Name:");
+                    ui.text_edit_singleline(&mut f.name);
+                    ui.end_row();
+                    ui.label("Host:");
+                    ui.text_edit_singleline(&mut f.host);
+                    ui.end_row();
+                    ui.label("Port:");
+                    ui.text_edit_singleline(&mut f.port);
+                    ui.end_row();
+                    ui.label("Username:");
+                    ui.text_edit_singleline(&mut f.username);
+                    ui.end_row();
+                    ui.label("Group:");
+                    egui::ComboBox::from_id_salt("host_form_group")
+                        .selected_text(
+                            data.groups
+                                .iter()
+                                .find(|g| g.id == f.group_id)
+                                .map(|g| g.name.clone())
+                                .unwrap_or_else(|| "— none —".to_string()),
+                        )
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .selectable_label(f.group_id.is_empty(), "— none —")
+                                .clicked()
+                            {
+                                f.group_id.clear();
+                            }
+                            for g in data.groups {
+                                if ui.selectable_label(f.group_id == g.id, &g.name).clicked() {
+                                    f.group_id = g.id.clone();
+                                }
+                            }
+                        });
+                    ui.end_row();
+                    ui.label("Jump host:");
+                    egui::ComboBox::from_id_salt("host_form_jump")
+                        .selected_text(
+                            data.hosts
+                                .iter()
+                                .find(|h| h.id == f.proxy_jump_id)
+                                .map(|h| h.name.clone())
+                                .unwrap_or_else(|| "— none —".to_string()),
+                        )
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .selectable_label(f.proxy_jump_id.is_empty(), "— none —")
+                                .clicked()
+                            {
+                                f.proxy_jump_id.clear();
+                            }
+                            for h in data.hosts {
+                                // Don't allow jumping through itself.
+                                if Some(h.id.as_str()) == f.id.as_deref() {
+                                    continue;
+                                }
+                                if ui
+                                    .selectable_label(f.proxy_jump_id == h.id, &h.name)
+                                    .clicked()
+                                {
+                                    f.proxy_jump_id = h.id.clone();
+                                }
+                            }
+                        });
+                    ui.end_row();
+                    ui.label("Auth:");
+                    ui.horizontal(|ui| {
+                        for (id, label) in [
+                            ("password", "Password"),
+                            ("private_key", "Key"),
+                            ("agent", "Agent"),
+                        ] {
+                            if ui.selectable_label(f.auth_type == id, label).clicked() {
+                                f.auth_type = id.to_string();
                             }
                         }
                     });
-                ui.end_row();
-                ui.label("Jump host:");
-                egui::ComboBox::from_id_salt("host_form_jump")
-                    .selected_text(
-                        data.hosts
-                            .iter()
-                            .find(|h| h.id == f.proxy_jump_id)
-                            .map(|h| h.name.clone())
-                            .unwrap_or_else(|| "— none —".to_string()),
-                    )
-                    .show_ui(ui, |ui| {
-                        if ui.selectable_label(f.proxy_jump_id.is_empty(), "— none —").clicked() {
-                            f.proxy_jump_id.clear();
-                        }
-                        for h in data.hosts {
-                            // Don't allow jumping through itself.
-                            if Some(h.id.as_str()) == f.id.as_deref() {
-                                continue;
-                            }
-                            if ui.selectable_label(f.proxy_jump_id == h.id, &h.name).clicked() {
-                                f.proxy_jump_id = h.id.clone();
-                            }
-                        }
-                    });
-                ui.end_row();
-                ui.label("Auth:");
-                ui.horizontal(|ui| {
-                    for (id, label) in [("password", "Password"), ("private_key", "Key"), ("agent", "Agent")] {
-                        if ui.selectable_label(f.auth_type == id, label).clicked() {
-                            f.auth_type = id.to_string();
-                        }
-                    }
+                    ui.end_row();
                 });
-                ui.end_row();
-            });
 
             // Credential section
             ui.add_space(4.0);
@@ -169,11 +198,17 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
                             .unwrap_or_else(|| "— new —".to_string()),
                     )
                     .show_ui(ui, |ui| {
-                        if ui.selectable_label(f.credential_id.is_empty(), "— new —").clicked() {
+                        if ui
+                            .selectable_label(f.credential_id.is_empty(), "— new —")
+                            .clicked()
+                        {
                             f.credential_id.clear();
                         }
                         for c in data.credentials {
-                            if ui.selectable_label(f.credential_id == c.id, &c.name).clicked() {
+                            if ui
+                                .selectable_label(f.credential_id == c.id, &c.name)
+                                .clicked()
+                            {
                                 f.credential_id = c.id.clone();
                             }
                         }
@@ -189,14 +224,22 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
                     }
                     "private_key" => {
                         ui.label("Private key (PEM):");
-                        ui.add(egui::TextEdit::multiline(&mut f.private_key_pem).desired_rows(4).desired_width(f32::INFINITY));
+                        ui.add(
+                            egui::TextEdit::multiline(&mut f.private_key_pem)
+                                .desired_rows(4)
+                                .desired_width(f32::INFINITY),
+                        );
                         ui.horizontal(|ui| {
                             ui.label("Passphrase:");
                             ui.add(egui::TextEdit::singleline(&mut f.passphrase).password(true));
                         });
                     }
                     _ => {
-                        ui.label(egui::RichText::new("Uses your local SSH agent (no stored secret).").small().weak());
+                        ui.label(
+                            egui::RichText::new("Uses your local SSH agent (no stored secret).")
+                                .small()
+                                .weak(),
+                        );
                     }
                 }
             }
@@ -205,7 +248,11 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
             let f = &mut state.host_form;
             ui.horizontal(|ui| {
                 ui.label("Startup cmd:");
-                ui.add(egui::TextEdit::singleline(&mut f.startup_command).hint_text("optional").desired_width(200.0));
+                ui.add(
+                    egui::TextEdit::singleline(&mut f.startup_command)
+                        .hint_text("optional")
+                        .desired_width(200.0),
+                );
             });
             ui.horizontal(|ui| {
                 ui.label("Tags (comma separated):");
@@ -344,7 +391,12 @@ fn dispatch_confirm_action(state: &mut UiState, events: &mut Vec<UiEvent>, actio
 // Port forwarding
 // ---------------------------------------------------------------------------
 
-fn forward_dialog(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+fn forward_dialog(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    data: &UiData,
+    events: &mut Vec<UiEvent>,
+) {
     let mut start = false;
     let mut cancel = false;
     egui::Window::new("New port forward (local → remote)")
@@ -362,7 +414,10 @@ fn forward_dialog(ctx: &egui::Context, state: &mut UiState, data: &UiData, event
                     .selected_text(current)
                     .show_ui(ui, |ui| {
                         for s in data.sessions {
-                            if ui.selectable_label(state.forward_session == Some(s.id), &s.name).clicked() {
+                            if ui
+                                .selectable_label(state.forward_session == Some(s.id), &s.name)
+                                .clicked()
+                            {
                                 state.forward_session = Some(s.id);
                             }
                         }
@@ -370,13 +425,19 @@ fn forward_dialog(ctx: &egui::Context, state: &mut UiState, data: &UiData, event
             });
             ui.horizontal(|ui| {
                 ui.label("Local bind:");
-                ui.add(egui::TextEdit::singleline(&mut state.forward_bind).hint_text("127.0.0.1:8080").desired_width(200.0));
+                ui.add(
+                    egui::TextEdit::singleline(&mut state.forward_bind)
+                        .hint_text("127.0.0.1:8080")
+                        .desired_width(200.0),
+                );
             });
             ui.horizontal(|ui| {
                 ui.label("Remote host:");
                 ui.text_edit_singleline(&mut state.forward_remote_host);
                 ui.label("port:");
-                ui.add(egui::TextEdit::singleline(&mut state.forward_remote_port).desired_width(80.0));
+                ui.add(
+                    egui::TextEdit::singleline(&mut state.forward_remote_port).desired_width(80.0),
+                );
             });
             ui.add_space(8.0);
             ui.horizontal(|ui| {
@@ -392,7 +453,10 @@ fn forward_dialog(ctx: &egui::Context, state: &mut UiState, data: &UiData, event
         state.show_forward_dialog = false;
     }
     if start {
-        match (state.forward_session, state.forward_remote_port.trim().parse::<u16>()) {
+        match (
+            state.forward_session,
+            state.forward_remote_port.trim().parse::<u16>(),
+        ) {
             (Some(session), Ok(port)) if !state.forward_remote_host.trim().is_empty() => {
                 state.show_forward_dialog = false;
                 events.push(UiEvent::StartForward {
@@ -417,41 +481,53 @@ fn snippet_editor(ctx: &egui::Context, state: &mut UiState, events: &mut Vec<UiE
     let is_new = state.snippet_form.id.is_none();
     let mut save = false;
     let mut cancel = false;
-    egui::Window::new(if is_new { "New snippet" } else { "Edit snippet" })
-        .collapsible(false)
-        .default_width(440.0)
-        .show(ctx, |ui| {
-            let f = &mut state.snippet_form;
-            ui.horizontal(|ui| {
-                ui.label("Title:");
-                ui.text_edit_singleline(&mut f.title);
-            });
-            ui.label("Command:");
-            ui.add(egui::TextEdit::multiline(&mut f.command).desired_rows(4).desired_width(f32::INFINITY));
-            ui.horizontal(|ui| {
-                ui.label("Description:");
-                ui.text_edit_singleline(&mut f.description);
-            });
-            ui.horizontal(|ui| {
-                ui.label("Tags:");
-                ui.text_edit_singleline(&mut f.tags);
-            });
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if ui.button("Save").clicked() {
-                    save = true;
-                }
-                if ui.button("Cancel").clicked() {
-                    cancel = true;
-                }
-            });
+    egui::Window::new(if is_new {
+        "New snippet"
+    } else {
+        "Edit snippet"
+    })
+    .collapsible(false)
+    .default_width(440.0)
+    .show(ctx, |ui| {
+        let f = &mut state.snippet_form;
+        ui.horizontal(|ui| {
+            ui.label("Title:");
+            ui.text_edit_singleline(&mut f.title);
         });
+        ui.label("Command:");
+        ui.add(
+            egui::TextEdit::multiline(&mut f.command)
+                .desired_rows(4)
+                .desired_width(f32::INFINITY),
+        );
+        ui.horizontal(|ui| {
+            ui.label("Description:");
+            ui.text_edit_singleline(&mut f.description);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Tags:");
+            ui.text_edit_singleline(&mut f.tags);
+        });
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if ui.button("Save").clicked() {
+                save = true;
+            }
+            if ui.button("Cancel").clicked() {
+                cancel = true;
+            }
+        });
+    });
     if save {
-        if state.snippet_form.title.trim().is_empty() || state.snippet_form.command.trim().is_empty() {
+        if state.snippet_form.title.trim().is_empty()
+            || state.snippet_form.command.trim().is_empty()
+        {
             state.toast("Title and command are required", true);
         } else {
             state.show_snippet_editor = false;
-            events.push(UiEvent::SaveSnippet(std::mem::take(&mut state.snippet_form)));
+            events.push(UiEvent::SaveSnippet(std::mem::take(
+                &mut state.snippet_form,
+            )));
         }
     }
     if cancel {

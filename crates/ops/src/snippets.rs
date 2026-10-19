@@ -2,8 +2,8 @@
 //! Author: Passwd Word
 
 use opsdeck_ssh::{ExecOutput, SessionId, SessionManager};
-use opsdeck_storage::models::{Snippet, new_id, now_unix};
 use opsdeck_storage::Storage;
+use opsdeck_storage::models::{Snippet, new_id, now_unix};
 
 use crate::error::OpsError;
 
@@ -79,13 +79,43 @@ impl SnippetService {
             return Ok(());
         }
         let defaults: &[(&str, &str, &str, &[&str])] = &[
-            ("Disk usage", "df -h", "Human-readable disk usage", &["system"]),
-            ("Memory usage", "free -h", "Human-readable memory usage", &["system"]),
-            ("Top processes", "ps aux --sort=-%cpu | head -n 20", "Top CPU consumers", &["system"]),
-            ("Listening ports", "ss -tlnp", "Listening TCP ports", &["network"]),
+            (
+                "Disk usage",
+                "df -h",
+                "Human-readable disk usage",
+                &["system"],
+            ),
+            (
+                "Memory usage",
+                "free -h",
+                "Human-readable memory usage",
+                &["system"],
+            ),
+            (
+                "Top processes",
+                "ps aux --sort=-%cpu | head -n 20",
+                "Top CPU consumers",
+                &["system"],
+            ),
+            (
+                "Listening ports",
+                "ss -tlnp",
+                "Listening TCP ports",
+                &["network"],
+            ),
             ("System uptime", "uptime", "Uptime and load", &["system"]),
-            ("Docker containers", "docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Ports}}'", "Running containers", &["docker"]),
-            ("Nginx reload", "sudo nginx -t && sudo systemctl reload nginx", "Test and reload nginx", &["web"]),
+            (
+                "Docker containers",
+                "docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Ports}}'",
+                "Running containers",
+                &["docker"],
+            ),
+            (
+                "Nginx reload",
+                "sudo nginx -t && sudo systemctl reload nginx",
+                "Test and reload nginx",
+                &["web"],
+            ),
         ];
         for (title, command, desc, tags) in defaults {
             self.create(title, command, Some(desc), None, tags).await?;

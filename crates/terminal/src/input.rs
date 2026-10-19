@@ -80,11 +80,19 @@ pub fn key_to_bytes(key: TermKey, mods: KeyMods) -> Vec<u8> {
         TermKey::Left => modified_arrow(b'D', mods),
         TermKey::Home => {
             let p = mods.param();
-            if p == 1 { b"\x1b[H".to_vec() } else { format!("\x1b[1;{p}H").into_bytes() }
+            if p == 1 {
+                b"\x1b[H".to_vec()
+            } else {
+                format!("\x1b[1;{p}H").into_bytes()
+            }
         }
         TermKey::End => {
             let p = mods.param();
-            if p == 1 { b"\x1b[F".to_vec() } else { format!("\x1b[1;{p}F").into_bytes() }
+            if p == 1 {
+                b"\x1b[F".to_vec()
+            } else {
+                format!("\x1b[1;{p}F").into_bytes()
+            }
         }
         TermKey::F(n) => match n {
             1 => b"\x1bOP".to_vec(),
@@ -142,11 +150,20 @@ mod tests {
 
     #[test]
     fn modified_keys() {
-        let ctrl = KeyMods { ctrl: true, ..Default::default() };
+        let ctrl = KeyMods {
+            ctrl: true,
+            ..Default::default()
+        };
         assert_eq!(key_to_bytes(TermKey::Up, ctrl), b"\x1b[1;5A");
-        let shift = KeyMods { shift: true, ..Default::default() };
+        let shift = KeyMods {
+            shift: true,
+            ..Default::default()
+        };
         assert_eq!(key_to_bytes(TermKey::Tab, shift), b"\x1b[Z");
-        let alt = KeyMods { alt: true, ..Default::default() };
+        let alt = KeyMods {
+            alt: true,
+            ..Default::default()
+        };
         assert_eq!(key_to_bytes(TermKey::Left, alt), b"\x1b[1;3D");
     }
 

@@ -50,7 +50,10 @@ pub fn parse_loadavg(out: &str) -> Result<(f64, f64, f64), OpsError> {
     if parts.len() < 3 {
         return Err(OpsError::Parse(format!("bad loadavg: {out:?}")));
     }
-    let p = |s: &str| s.parse::<f64>().map_err(|_| OpsError::Parse(format!("bad loadavg number: {s}")));
+    let p = |s: &str| {
+        s.parse::<f64>()
+            .map_err(|_| OpsError::Parse(format!("bad loadavg number: {s}")))
+    };
     Ok((p(parts[0])?, p(parts[1])?, p(parts[2])?))
 }
 
@@ -63,8 +66,12 @@ pub fn parse_free_b(out: &str) -> Result<(u64, u64), OpsError> {
             if f.len() < 2 {
                 return Err(OpsError::Parse(format!("bad free line: {line:?}")));
             }
-            let total = f[0].parse::<u64>().map_err(|_| OpsError::Parse("bad mem total".into()))?;
-            let used = f[1].parse::<u64>().map_err(|_| OpsError::Parse("bad mem used".into()))?;
+            let total = f[0]
+                .parse::<u64>()
+                .map_err(|_| OpsError::Parse("bad mem total".into()))?;
+            let used = f[1]
+                .parse::<u64>()
+                .map_err(|_| OpsError::Parse("bad mem used".into()))?;
             return Ok((used, total));
         }
     }
@@ -78,8 +85,12 @@ pub fn parse_df_b1(out: &str) -> Result<(u64, u64), OpsError> {
         if f.len() < 6 {
             continue;
         }
-        let total = f[1].parse::<u64>().map_err(|_| OpsError::Parse("bad df total".into()))?;
-        let used = f[2].parse::<u64>().map_err(|_| OpsError::Parse("bad df used".into()))?;
+        let total = f[1]
+            .parse::<u64>()
+            .map_err(|_| OpsError::Parse("bad df total".into()))?;
+        let used = f[2]
+            .parse::<u64>()
+            .map_err(|_| OpsError::Parse("bad df used".into()))?;
         return Ok((used, total));
     }
     Err(OpsError::Parse("no data rows in df output".into()))
@@ -120,7 +131,9 @@ pub fn parse_net_dev(out: &str) -> (u64, u64) {
     let mut rx = 0u64;
     let mut tx = 0u64;
     for line in out.lines() {
-        let Some((iface, rest)) = line.split_once(':') else { continue };
+        let Some((iface, rest)) = line.split_once(':') else {
+            continue;
+        };
         if iface.trim() == "lo" {
             continue;
         }
@@ -142,12 +155,19 @@ pub fn parse_ps(out: &str) -> Vec<ProcessInfo> {
         if f.len() < 4 {
             continue;
         }
-        let (Ok(pid), Ok(cpu), Ok(mem)) =
-            (f[0].parse::<u32>(), f[2].parse::<f32>(), f[3].parse::<f32>())
-        else {
+        let (Ok(pid), Ok(cpu), Ok(mem)) = (
+            f[0].parse::<u32>(),
+            f[2].parse::<f32>(),
+            f[3].parse::<f32>(),
+        ) else {
             continue;
         };
-        procs.push(ProcessInfo { pid, name: f[1].to_string(), cpu_percent: cpu, mem_percent: mem });
+        procs.push(ProcessInfo {
+            pid,
+            name: f[1].to_string(),
+            cpu_percent: cpu,
+            mem_percent: mem,
+        });
     }
     procs
 }
@@ -165,7 +185,11 @@ impl MetricsCollector {
     /// Collect one snapshot. Individual command failures degrade gracefully
     /// (the corresponding fields stay `None`) instead of failing the whole
     /// snapshot.
-    pub async fn collect(&self, session: SessionId, host_id: &str) -> Result<MetricSnapshot, OpsError> {
+    pub async fn collect(
+        &self,
+        session: SessionId,
+        host_id: &str,
+    ) -> Result<MetricSnapshot, OpsError> {
         let timeout = Duration::from_secs(15);
         let (load, mem, disk, cpu, net) = tokio::join!(
             self.ssh.exec_timeout(session, commands::LOADAVG, timeout),
@@ -216,7 +240,10 @@ impl MetricsCollector {
 
     /// Fetch the top-process table.
     pub async fn top_processes(&self, session: SessionId) -> Result<Vec<ProcessInfo>, OpsError> {
-        let out = self.ssh.exec_timeout(session, commands::TOP_PROCS, Duration::from_secs(15)).await?;
+        let out = self
+            .ssh
+            .exec_timeout(session, commands::TOP_PROCS, Duration::from_secs(15))
+            .await?;
         Ok(parse_ps(&out.stdout))
     }
 }

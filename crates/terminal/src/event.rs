@@ -46,8 +46,14 @@ impl TerminalHandle {
         let (command_tx, command_rx) = mpsc::channel(256);
         let (event_tx, event_rx) = mpsc::channel(256);
         (
-            Self { command_tx, event_rx },
-            TerminalIo { command_rx, event_tx },
+            Self {
+                command_tx,
+                event_rx,
+            },
+            TerminalIo {
+                command_rx,
+                event_tx,
+            },
         )
     }
 }

@@ -51,7 +51,15 @@ pub struct TermTab {
 
 impl TermTab {
     pub fn single(session: SessionId, host_id: String, title: String) -> Self {
-        Self { panes: vec![Pane { session, host_id, title }], vertical: false, active_pane: 0 }
+        Self {
+            panes: vec![Pane {
+                session,
+                host_id,
+                title,
+            }],
+            vertical: false,
+            active_pane: 0,
+        }
     }
 }
 
@@ -100,7 +108,12 @@ pub struct HostForm {
 
 impl HostForm {
     pub fn blank() -> Self {
-        Self { port: "22".to_string(), username: "root".to_string(), auth_type: "password".to_string(), ..Default::default() }
+        Self {
+            port: "22".to_string(),
+            username: "root".to_string(),
+            auth_type: "password".to_string(),
+            ..Default::default()
+        }
     }
 }
 
@@ -272,7 +285,10 @@ impl UiState {
 
     /// Feed backend bytes into a terminal, creating it lazily if needed.
     pub fn feed_terminal(&mut self, session: SessionId, bytes: &[u8]) {
-        let term = self.terminals.entry(session).or_insert_with(|| Terminal::new(80, 24));
+        let term = self
+            .terminals
+            .entry(session)
+            .or_insert_with(|| Terminal::new(80, 24));
         let was_scrolled = term.is_scrolled_up();
         term.feed(bytes);
         if !was_scrolled {
@@ -298,12 +314,18 @@ impl UiState {
 
     /// The currently visible pane, if any.
     pub fn active_pane(&self) -> Option<&Pane> {
-        self.tabs.get(self.active_tab)?.panes.get(self.tabs[self.active_tab].active_pane)
+        self.tabs
+            .get(self.active_tab)?
+            .panes
+            .get(self.tabs[self.active_tab].active_pane)
     }
 
     /// SFTP path for a host (defaults to the remote home).
     pub fn sftp_path(&self, host_id: &str) -> String {
-        self.sftp_paths.get(host_id).cloned().unwrap_or_else(|| ".".to_string())
+        self.sftp_paths
+            .get(host_id)
+            .cloned()
+            .unwrap_or_else(|| ".".to_string())
     }
 }
 

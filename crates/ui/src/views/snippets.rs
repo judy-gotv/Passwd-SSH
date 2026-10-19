@@ -58,7 +58,11 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
                             };
                             state.show_snippet_editor = true;
                         }
-                        if ui.small_button("▶").on_hover_text("Run on active terminal").clicked() {
+                        if ui
+                            .small_button("▶")
+                            .on_hover_text("Run on active terminal")
+                            .clicked()
+                        {
                             if let Some(pane) = state.active_pane().cloned() {
                                 events.push(UiEvent::RunSnippet {
                                     snippet_id: snippet.id.clone(),
@@ -73,7 +77,12 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
                 ui.separator();
             }
             if data.snippets.is_empty() {
-                ui.label(egui::RichText::new("No snippets yet. Built-in examples are seeded on first run.").weak());
+                ui.label(
+                    egui::RichText::new(
+                        "No snippets yet. Built-in examples are seeded on first run.",
+                    )
+                    .weak(),
+                );
             }
         });
 
@@ -82,7 +91,9 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
         ui.label(egui::RichText::new("Batch run").strong());
         ui.horizontal(|ui| {
             ui.label("Command:");
-            ui.add(egui::TextEdit::singleline(&mut state.batch_command).desired_width(f32::INFINITY));
+            ui.add(
+                egui::TextEdit::singleline(&mut state.batch_command).desired_width(f32::INFINITY),
+            );
         });
         ui.horizontal(|ui| {
             ui.label("Targets:");
@@ -122,12 +133,14 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
             }
         });
         if !state.batch_output.is_empty() {
-            egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
-                for (title, output) in &state.batch_output {
-                    ui.label(egui::RichText::new(format!("── {title}")).strong().small());
-                    ui.label(egui::RichText::new(output).monospace().small());
-                }
-            });
+            egui::ScrollArea::vertical()
+                .max_height(200.0)
+                .show(ui, |ui| {
+                    for (title, output) in &state.batch_output {
+                        ui.label(egui::RichText::new(format!("── {title}")).strong().small());
+                        ui.label(egui::RichText::new(output).monospace().small());
+                    }
+                });
         }
     });
 }

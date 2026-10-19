@@ -62,7 +62,11 @@ impl Theme {
 
     /// Convert to egui visuals.
     pub fn egui_visuals(&self) -> egui::Visuals {
-        let mut visuals = if self.dark { egui::Visuals::dark() } else { egui::Visuals::light() };
+        let mut visuals = if self.dark {
+            egui::Visuals::dark()
+        } else {
+            egui::Visuals::light()
+        };
         visuals.panel_fill = rgb(self.panel);
         visuals.window_fill = rgb(self.panel);
         visuals.extreme_bg_color = rgb(self.bg);
@@ -78,11 +82,24 @@ impl Theme {
         let mut style = (*ctx.style()).clone();
         let body = egui::FontId::new(self.font_size, egui::FontFamily::Proportional);
         let mono = egui::FontId::new(self.font_size, egui::FontFamily::Monospace);
-        style.text_styles.insert(egui::TextStyle::Body, body.clone());
-        style.text_styles.insert(egui::TextStyle::Button, body.clone());
-        style.text_styles.insert(egui::TextStyle::Heading, egui::FontId::new(self.font_size + 4.0, egui::FontFamily::Proportional));
+        style
+            .text_styles
+            .insert(egui::TextStyle::Body, body.clone());
+        style
+            .text_styles
+            .insert(egui::TextStyle::Button, body.clone());
+        style.text_styles.insert(
+            egui::TextStyle::Heading,
+            egui::FontId::new(self.font_size + 4.0, egui::FontFamily::Proportional),
+        );
         style.text_styles.insert(egui::TextStyle::Monospace, mono);
-        style.text_styles.insert(egui::TextStyle::Small, egui::FontId::new((self.font_size - 2.0).max(9.0), egui::FontFamily::Proportional));
+        style.text_styles.insert(
+            egui::TextStyle::Small,
+            egui::FontId::new(
+                (self.font_size - 2.0).max(9.0),
+                egui::FontFamily::Proportional,
+            ),
+        );
         ctx.set_style(style);
     }
 
@@ -92,13 +109,27 @@ impl Theme {
         self.apply_text_sizes(ctx);
     }
 
-    pub fn bg(&self) -> Color32 { rgb(self.bg) }
-    pub fn panel(&self) -> Color32 { rgb(self.panel) }
-    pub fn text(&self) -> Color32 { rgb(self.text) }
-    pub fn weak_text(&self) -> Color32 { rgb(self.weak_text) }
-    pub fn accent(&self) -> Color32 { rgb(self.accent) }
-    pub fn terminal_bg(&self) -> Color32 { rgb(self.terminal_bg) }
-    pub fn terminal_fg(&self) -> Color32 { rgb(self.terminal_fg) }
+    pub fn bg(&self) -> Color32 {
+        rgb(self.bg)
+    }
+    pub fn panel(&self) -> Color32 {
+        rgb(self.panel)
+    }
+    pub fn text(&self) -> Color32 {
+        rgb(self.text)
+    }
+    pub fn weak_text(&self) -> Color32 {
+        rgb(self.weak_text)
+    }
+    pub fn accent(&self) -> Color32 {
+        rgb(self.accent)
+    }
+    pub fn terminal_bg(&self) -> Color32 {
+        rgb(self.terminal_bg)
+    }
+    pub fn terminal_fg(&self) -> Color32 {
+        rgb(self.terminal_fg)
+    }
 }
 
 fn rgb(c: [u8; 3]) -> Color32 {
@@ -106,10 +137,20 @@ fn rgb(c: [u8; 3]) -> Color32 {
 }
 
 /// Terminal default colors for the render model.
-pub fn terminal_defaults(theme: &Theme) -> (opsdeck_terminal::RgbColor, opsdeck_terminal::RgbColor) {
+pub fn terminal_defaults(
+    theme: &Theme,
+) -> (opsdeck_terminal::RgbColor, opsdeck_terminal::RgbColor) {
     use opsdeck_terminal::RgbColor;
     (
-        RgbColor::new(theme.terminal_fg[0], theme.terminal_fg[1], theme.terminal_fg[2]),
-        RgbColor::new(theme.terminal_bg[0], theme.terminal_bg[1], theme.terminal_bg[2]),
+        RgbColor::new(
+            theme.terminal_fg[0],
+            theme.terminal_fg[1],
+            theme.terminal_fg[2],
+        ),
+        RgbColor::new(
+            theme.terminal_bg[0],
+            theme.terminal_bg[1],
+            theme.terminal_bg[2],
+        ),
     )
 }

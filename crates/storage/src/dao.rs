@@ -604,14 +604,6 @@ impl TransferDao<'_> {
         .await?;
         rows.iter().map(map_transfer).collect::<Result<_, _>>().map_err(Into::into)
     }
-            "SELECT * FROM transfer_tasks
-             WHERE status IN ('pending', 'running', 'paused')
-             ORDER BY created_at ASC",
-        )
-        .fetch_all(self.pool)
-        .await?;
-        rows.iter().map(map_transfer).collect::<Result<_, _>>().map_err(Into::into)
-    }
 
     /// Delete finished tasks older than `cutoff` (unix seconds).
     pub async fn prune_finished_before(&self, cutoff: i64) -> Result<u64, StorageError> {

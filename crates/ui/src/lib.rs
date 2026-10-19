@@ -12,14 +12,18 @@ use std::collections::HashMap;
 use opsdeck_ops::ProcessInfo;
 use opsdeck_sftp::FileEntry;
 use opsdeck_ssh::{HostKeyDecision, SessionId, SessionInfo};
-use opsdeck_storage::models::{CredentialMeta, Host, HostGroup, MetricSnapshot, Snippet, TransferTask};
+use opsdeck_storage::models::{
+    CredentialMeta, Host, HostGroup, MetricSnapshot, Snippet, TransferTask,
+};
 
 pub mod shortcuts;
 pub mod state;
 pub mod theme;
 pub mod views;
 
-pub use state::{ConfirmDialog, HostForm, MainTab, Pane, Screen, Selection, SnippetForm, TermTab, Toast, UiState};
+pub use state::{
+    ConfirmDialog, HostForm, MainTab, Pane, Screen, Selection, SnippetForm, TermTab, Toast, UiState,
+};
 pub use theme::Theme;
 
 /// Actions the app must execute.
@@ -29,7 +33,10 @@ pub enum UiEvent {
     CreateVault(String),
     UnlockVault(String),
     LockVault,
-    ChangeMasterPassword { old: String, new: String },
+    ChangeMasterPassword {
+        old: String,
+        new: String,
+    },
     // hosts
     ConnectHost(String),
     DisconnectSession(SessionId),
@@ -43,29 +50,67 @@ pub enum UiEvent {
     TerminalInput(SessionId, Vec<u8>),
     TerminalResize(SessionId, u16, u16),
     NewTabForHost(String),
-    SplitPane { vertical: bool },
+    SplitPane {
+        vertical: bool,
+    },
     ClosePane(SessionId),
-    HostKeyDecision { prompt_id: u64, decision: HostKeyDecision },
+    HostKeyDecision {
+        prompt_id: u64,
+        decision: HostKeyDecision,
+    },
     // sftp
-    SftpNavigate { host_id: String, path: String },
-    SftpMkdir { host_id: String, path: String },
-    SftpDelete { host_id: String, path: String },
-    SftpRename { host_id: String, from: String, to: String },
-    SftpUpload { host_id: String, local: String, remote: String },
-    SftpDownload { host_id: String, remote: String, local: String },
+    SftpNavigate {
+        host_id: String,
+        path: String,
+    },
+    SftpMkdir {
+        host_id: String,
+        path: String,
+    },
+    SftpDelete {
+        host_id: String,
+        path: String,
+    },
+    SftpRename {
+        host_id: String,
+        from: String,
+        to: String,
+    },
+    SftpUpload {
+        host_id: String,
+        local: String,
+        remote: String,
+    },
+    SftpDownload {
+        host_id: String,
+        remote: String,
+        local: String,
+    },
     TransferPause(String),
     TransferRetry(String),
     TransferCancel(String),
     // monitor
     MonitorSelect(String),
     // snippets
-    RunSnippet { snippet_id: String, session: SessionId },
+    RunSnippet {
+        snippet_id: String,
+        session: SessionId,
+    },
     SaveSnippet(SnippetForm),
     DeleteSnippet(String),
     // batch
-    BatchRun { sessions: Vec<SessionId>, command: String, allow_dangerous: bool },
+    BatchRun {
+        sessions: Vec<SessionId>,
+        command: String,
+        allow_dangerous: bool,
+    },
     // forwarding
-    StartForward { session: SessionId, bind: String, remote_host: String, remote_port: u16 },
+    StartForward {
+        session: SessionId,
+        bind: String,
+        remote_host: String,
+        remote_port: u16,
+    },
     StopForward(usize),
     // sync
     SyncNow,

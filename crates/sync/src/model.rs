@@ -90,8 +90,13 @@ impl SyncRecord {
 
     /// Decrypt the record payload.
     pub fn open<T: for<'de> Deserialize<'de>>(&self, vault: &Vault) -> Result<T, SyncError> {
-        let blob = EncryptedBlob { nonce: self.nonce_vec()?, ciphertext: self.ciphertext.clone() };
-        let plaintext = vault.decrypt(&blob).map_err(|_| SyncError::Decrypt(self.id.clone()))?;
+        let blob = EncryptedBlob {
+            nonce: self.nonce_vec()?,
+            ciphertext: self.ciphertext.clone(),
+        };
+        let plaintext = vault
+            .decrypt(&blob)
+            .map_err(|_| SyncError::Decrypt(self.id.clone()))?;
         serde_json::from_slice(&plaintext)
             .map_err(|e| SyncError::Malformed(self.id.clone(), e.to_string()))
     }
@@ -114,10 +119,8 @@ pub enum SyncEntity {
 
 /// Decrypt a record into its typed entity.
 pub fn open_entity(vault: &Vault, record: &SyncRecord) -> Result<SyncEntity, SyncError> {
-    let collection =
-        SyncCollection::from_str(&record.collection).ok_or_else(|| {
-            SyncError::Malformed(record.id.clone(), "unknown collection".into())
-        })?;
+    let collection = SyncCollection::from_str(&record.collection)
+        .ok_or_else(|| SyncError::Malformed(record.id.clone(), "unknown collection".into()))?;
     match collection {
         SyncCollection::Hosts => Ok(SyncEntity::Host(record.open(vault)?)),
         SyncCollection::HostGroups => Ok(SyncEntity::HostGroup(record.open(vault)?)),

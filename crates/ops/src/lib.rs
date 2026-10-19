@@ -7,9 +7,9 @@
 //! Author: Passwd Word
 
 pub mod batch;
+mod error;
 pub mod metrics;
 pub mod snippets;
-mod error;
 
 pub use batch::{BatchResult, run_on_hosts};
 pub use error::OpsError;

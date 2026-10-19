@@ -111,9 +111,15 @@ impl Terminal {
     pub fn new(cols: usize, rows: usize) -> Self {
         let mut config = Config::default();
         config.scrolling_history = 10_000;
-        let dims = TermDimensions { cols: cols.max(1), rows: rows.max(1) };
+        let dims = TermDimensions {
+            cols: cols.max(1),
+            rows: rows.max(1),
+        };
         let term = Term::new(config, &dims, VoidListener);
-        Self { term, processor: Processor::new() }
+        Self {
+            term,
+            processor: Processor::new(),
+        }
     }
 
     /// Feed raw PTY/SSH output bytes into the emulator.
@@ -124,7 +130,10 @@ impl Terminal {
 
     /// Resize the terminal grid.
     pub fn resize(&mut self, cols: usize, rows: usize) {
-        let dims = TermDimensions { cols: cols.max(1), rows: rows.max(1) };
+        let dims = TermDimensions {
+            cols: cols.max(1),
+            rows: rows.max(1),
+        };
         self.term.resize(&dims);
     }
 
@@ -181,12 +190,18 @@ impl Terminal {
             if !is_spacer {
                 let (mut fg, mut bg) =
                     resolve_cell_colors(&cell.fg, &cell.bg, content.colors, default_fg, default_bg);
-                if cell.flags.contains(alacritty_terminal::term::cell::Flags::INVERSE) {
+                if cell
+                    .flags
+                    .contains(alacritty_terminal::term::cell::Flags::INVERSE)
+                {
                     std::mem::swap(&mut fg, &mut bg);
                 }
-                let bold = cell.flags.contains(alacritty_terminal::term::cell::Flags::BOLD);
-                let underline =
-                    cell.flags.contains(alacritty_terminal::term::cell::Flags::UNDERLINE);
+                let bold = cell
+                    .flags
+                    .contains(alacritty_terminal::term::cell::Flags::BOLD);
+                let underline = cell
+                    .flags
+                    .contains(alacritty_terminal::term::cell::Flags::UNDERLINE);
                 let same_style = cur_span.as_ref().is_some_and(|s| {
                     s.fg == fg && s.bg == bg && s.bold == bold && s.underline == underline
                 });
@@ -258,7 +273,10 @@ impl Terminal {
             let mut s = String::new();
             for col_no in 0..cols {
                 let cell = &grid[Line(line_no)][Column(col_no)];
-                if cell.flags.contains(alacritty_terminal::term::cell::Flags::WIDE_CHAR_SPACER) {
+                if cell
+                    .flags
+                    .contains(alacritty_terminal::term::cell::Flags::WIDE_CHAR_SPACER)
+                {
                     continue;
                 }
                 s.push(cell.c);
