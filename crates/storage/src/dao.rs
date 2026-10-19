@@ -23,7 +23,9 @@ fn map_host(row: &sqlx::sqlite::SqliteRow) -> Result<Host, sqlx::Error> {
         passphrase_credential_id: row.try_get("passphrase_credential_id")?,
         proxy_jump_id: row.try_get("proxy_jump_id")?,
         startup_command: row.try_get("startup_command")?,
-        tags: row.try_get::<Option<String>, _>("tags")?.unwrap_or_else(|| "[]".to_string()),
+        tags: row
+            .try_get::<Option<String>, _>("tags")?
+            .unwrap_or_else(|| "[]".to_string()),
         favorite: row.try_get::<i64, _>("favorite")? != 0,
         last_connected_at: row.try_get("last_connected_at")?,
         created_at: row.try_get("created_at")?,
@@ -60,7 +62,9 @@ fn map_snippet(row: &sqlx::sqlite::SqliteRow) -> Result<Snippet, sqlx::Error> {
         command: row.try_get("command")?,
         description: row.try_get("description")?,
         host_id: row.try_get("host_id")?,
-        tags: row.try_get::<Option<String>, _>("tags")?.unwrap_or_else(|| "[]".to_string()),
+        tags: row
+            .try_get::<Option<String>, _>("tags")?
+            .unwrap_or_else(|| "[]".to_string()),
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
     })
@@ -180,7 +184,10 @@ impl HostDao<'_> {
 
     /// Delete a host.
     pub async fn delete(&self, id: &str) -> Result<(), StorageError> {
-        sqlx::query("DELETE FROM hosts WHERE id = ?").bind(id).execute(self.pool).await?;
+        sqlx::query("DELETE FROM hosts WHERE id = ?")
+            .bind(id)
+            .execute(self.pool)
+            .await?;
         Ok(())
     }
 
@@ -199,7 +206,10 @@ impl HostDao<'_> {
         let rows = sqlx::query("SELECT * FROM hosts ORDER BY favorite DESC, name ASC")
             .fetch_all(self.pool)
             .await?;
-        rows.iter().map(map_host).collect::<Result<_, _>>().map_err(Into::into)
+        rows.iter()
+            .map(map_host)
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 
     /// List hosts in a group.
@@ -208,7 +218,10 @@ impl HostDao<'_> {
             .bind(group_id)
             .fetch_all(self.pool)
             .await?;
-        rows.iter().map(map_host).collect::<Result<_, _>>().map_err(Into::into)
+        rows.iter()
+            .map(map_host)
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 
     /// Full-text-ish search over name, host, username and tags.
@@ -225,7 +238,10 @@ impl HostDao<'_> {
         .bind(&like)
         .fetch_all(self.pool)
         .await?;
-        rows.iter().map(map_host).collect::<Result<_, _>>().map_err(Into::into)
+        rows.iter()
+            .map(map_host)
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 
     /// Recently connected hosts, most recent first.
@@ -237,7 +253,10 @@ impl HostDao<'_> {
         .bind(limit)
         .fetch_all(self.pool)
         .await?;
-        rows.iter().map(map_host).collect::<Result<_, _>>().map_err(Into::into)
+        rows.iter()
+            .map(map_host)
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 
     /// Mark a host as just connected.
@@ -335,7 +354,10 @@ impl CredentialDao<'_> {
 
     /// Delete a credential.
     pub async fn delete(&self, id: &str) -> Result<(), StorageError> {
-        sqlx::query("DELETE FROM credentials WHERE id = ?").bind(id).execute(self.pool).await?;
+        sqlx::query("DELETE FROM credentials WHERE id = ?")
+            .bind(id)
+            .execute(self.pool)
+            .await?;
         Ok(())
     }
 }
@@ -390,7 +412,10 @@ impl HostGroupDao<'_> {
             .bind(id)
             .execute(&mut *tx)
             .await?;
-        sqlx::query("DELETE FROM host_groups WHERE id = ?").bind(id).execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM host_groups WHERE id = ?")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(())
     }
@@ -400,7 +425,10 @@ impl HostGroupDao<'_> {
         let rows = sqlx::query("SELECT * FROM host_groups ORDER BY sort_order ASC, name ASC")
             .fetch_all(self.pool)
             .await?;
-        rows.iter().map(map_group).collect::<Result<_, _>>().map_err(Into::into)
+        rows.iter()
+            .map(map_group)
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 }
 
@@ -460,7 +488,10 @@ impl SnippetDao<'_> {
 
     /// Delete a snippet.
     pub async fn delete(&self, id: &str) -> Result<(), StorageError> {
-        sqlx::query("DELETE FROM snippets WHERE id = ?").bind(id).execute(self.pool).await?;
+        sqlx::query("DELETE FROM snippets WHERE id = ?")
+            .bind(id)
+            .execute(self.pool)
+            .await?;
         Ok(())
     }
 
@@ -476,8 +507,13 @@ impl SnippetDao<'_> {
 
     /// List all snippets by title.
     pub async fn list_all(&self) -> Result<Vec<Snippet>, StorageError> {
-        let rows = sqlx::query("SELECT * FROM snippets ORDER BY title ASC").fetch_all(self.pool).await?;
-        rows.iter().map(map_snippet).collect::<Result<_, _>>().map_err(Into::into)
+        let rows = sqlx::query("SELECT * FROM snippets ORDER BY title ASC")
+            .fetch_all(self.pool)
+            .await?;
+        rows.iter()
+            .map(map_snippet)
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 
     /// Search snippets by title, command or tags.
@@ -492,7 +528,10 @@ impl SnippetDao<'_> {
         .bind(&like)
         .fetch_all(self.pool)
         .await?;
-        rows.iter().map(map_snippet).collect::<Result<_, _>>().map_err(Into::into)
+        rows.iter()
+            .map(map_snippet)
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 }
 
@@ -571,7 +610,11 @@ impl TransferDao<'_> {
     }
 
     /// List tasks for a host, newest first.
-    pub async fn list_for_host(&self, host_id: &str, limit: i64) -> Result<Vec<TransferTask>, StorageError> {
+    pub async fn list_for_host(
+        &self,
+        host_id: &str,
+        limit: i64,
+    ) -> Result<Vec<TransferTask>, StorageError> {
         let rows = sqlx::query(
             "SELECT * FROM transfer_tasks WHERE host_id = ? ORDER BY created_at DESC LIMIT ?",
         )
@@ -579,7 +622,10 @@ impl TransferDao<'_> {
         .bind(limit)
         .fetch_all(self.pool)
         .await?;
-        rows.iter().map(map_transfer).collect::<Result<_, _>>().map_err(Into::into)
+        rows.iter()
+            .map(map_transfer)
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 
     /// List all unfinished tasks (for resume after restart).
@@ -591,18 +637,22 @@ impl TransferDao<'_> {
         )
         .fetch_all(self.pool)
         .await?;
-        rows.iter().map(map_transfer).collect::<Result<_, _>>().map_err(Into::into)
+        rows.iter()
+            .map(map_transfer)
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 
     /// List the most recently updated tasks across all hosts (for the UI queue).
     pub async fn list_recent(&self, limit: i64) -> Result<Vec<TransferTask>, StorageError> {
-        let rows = sqlx::query(
-            "SELECT * FROM transfer_tasks ORDER BY updated_at DESC LIMIT ?",
-        )
-        .bind(limit)
-        .fetch_all(self.pool)
-        .await?;
-        rows.iter().map(map_transfer).collect::<Result<_, _>>().map_err(Into::into)
+        let rows = sqlx::query("SELECT * FROM transfer_tasks ORDER BY updated_at DESC LIMIT ?")
+            .bind(limit)
+            .fetch_all(self.pool)
+            .await?;
+        rows.iter()
+            .map(map_transfer)
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 
     /// Delete finished tasks older than `cutoff` (unix seconds).
@@ -674,11 +724,17 @@ impl MetricDao<'_> {
         .bind(limit)
         .fetch_all(self.pool)
         .await?;
-        rows.iter().map(map_metric).collect::<Result<_, _>>().map_err(Into::into)
+        rows.iter()
+            .map(map_metric)
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 
     /// Latest snapshot for a host.
-    pub async fn latest_for_host(&self, host_id: &str) -> Result<Option<MetricSnapshot>, StorageError> {
+    pub async fn latest_for_host(
+        &self,
+        host_id: &str,
+    ) -> Result<Option<MetricSnapshot>, StorageError> {
         let row = sqlx::query(
             "SELECT * FROM metric_snapshots WHERE host_id = ? ORDER BY collected_at DESC LIMIT 1",
         )
@@ -730,7 +786,10 @@ mod tests {
         let mut host2 = host.clone();
         host2.name = "web-1-renamed".to_string();
         db.hosts().update(&host2).await.unwrap();
-        assert_eq!(db.hosts().get(&host.id).await.unwrap().name, "web-1-renamed");
+        assert_eq!(
+            db.hosts().get(&host.id).await.unwrap().name,
+            "web-1-renamed"
+        );
 
         db.hosts().delete(&host.id).await.unwrap();
         assert!(matches!(

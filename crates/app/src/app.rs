@@ -6,31 +6,34 @@
 //!
 //! Author: Passwd Word
 
-use std::collections::{HashMap, HashSet};use std::path::PathBuf;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use opsdeck_ops::{batch, MetricsCollector, SnippetService};
-use opsdeck_sftp::{FileEntry, QueueEvent, RusshSftpEngine, SftpEngine, TransferDirection, TransferQueue};
+use opsdeck_ops::{MetricsCollector, SnippetService, batch};
+use opsdeck_sftp::{
+    FileEntry, QueueEvent, RusshSftpEngine, SftpEngine, TransferDirection, TransferQueue,
+};
 use opsdeck_ssh::{
     CredentialProvider, HostKeyDecision, HostKeyPrompt, LocalForward, SessionId, SessionInfo,
     SessionManager, ShellChannel, ShellCommand, ShellEvent, SshError,
 };
-use opsdeck_storage::models::{
-    now_unix, AuthMethod, Credential, CredentialKind, ExportData, Host, HostConfig, MetricSnapshot,
-    TransferTask,
-};
 use opsdeck_storage::Storage;
-use opsdeck_sync::{device_id, FileRemote, HttpRemote, Remote, SyncEngine, SyncSummary};
+use opsdeck_storage::models::{
+    AuthMethod, Credential, CredentialKind, ExportData, Host, HostConfig, MetricSnapshot,
+    TransferTask, now_unix,
+};
+use opsdeck_sync::{FileRemote, HttpRemote, Remote, SyncEngine, SyncSummary, device_id};
 use opsdeck_ui::{
-    ForwardView, KeyPromptView, MainTab, SftpListing, Screen, SyncStatusView, TermTab, Theme,
+    ForwardView, KeyPromptView, MainTab, Screen, SftpListing, SyncStatusView, TermTab, Theme,
     UiData, UiEvent, UiState, UpdateStatusView,
 };
 use opsdeck_vault::{EncryptedBlob, SecretBytes, SecretString, Vault, VaultVerifier};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{Mutex, mpsc, oneshot};
 
-use crate::update::{check_update, UpdateInfo};
+use crate::update::{UpdateInfo, check_update};
 
 // ---------------------------------------------------------------------------
 // Background messages
@@ -138,9 +141,19 @@ impl AppCredentials {
             .await
             .map_err(|e| SshError::Auth(format!("credential not found: {e}")))?;
         let vault = self.vault.lock().await;
-        let vault = vault.as_ref().ok_or_else(|| SshError::Auth("vault is locked".into()))?;
-        let blob = EncryptedBlob { nonce: cred.nonce.try_into().map_err(|_| SshError::Auth("bad nonce".into()))?, ciphertext: cred.ciphertext };
-        vault.decrypt(&blob).map_err(|e| SshError::Auth(format!("decrypt credential: {e}")))
+        let vault = vault
+            .as_ref()
+            .ok_or_else(|| SshError::Auth("vault is locked".into()))?;
+        let blob = EncryptedBlob {
+            nonce: cred
+                .nonce
+                .try_into()
+                .map_err(|_| SshError::Auth("bad nonce".into()))?,
+            ciphertext: cred.ciphertext,
+        };
+        vault
+            .decrypt(&blob)
+            .map_err(|e| SshError::Auth(format!("decrypt credential: {e}")))
     }
 }
 
@@ -158,24 +171,29 @@ impl CredentialProvider for AppCredentials {
             .credential_id
             .ok_or_else(|| SshError::Auth("no password credential configured".into()))?;
         let bytes = self.secret_for(&cred_id).await?;
-        let s =
-            String::from_utf8(bytes).map_err(|_| SshError::Auth("credential is not text".into()))?;
+        let s = String::from_utf8(bytes)
+            .map_err(|_| SshError::Auth("credential is not text".into()))?;
         Ok(SecretString::new(s))
     }
 
-    async fn private_key_for(&self, config: &HostConfig) -> Result<(SecretBytes, Option<SecretString>), SshError> {
+    async fn private_key_for(
+        &self,
+        config: &HostConfig,
+    ) -> Result<(SecretBytes, Option<SecretString>), SshError> {
         let (key_id, passphrase_id) = match &config.auth {
-            AuthMethod::PrivateKey { key_id, passphrase_id } => (*key_id, *passphrase_id),
+            AuthMethod::PrivateKey {
+                key_id,
+                passphrase_id,
+            } => (*key_id, *passphrase_id),
             _ => return Err(SshError::Auth("host is not configured for key auth".into())),
         };
         let bytes = self.secret_for(&key_id.to_string()).await?;
         let passphrase = match passphrase_id {
             Some(pid) => {
                 let bytes = self.secret_for(&pid.to_string()).await?;
-                Some(SecretString::new(
-                    String::from_utf8(bytes)
-                        .map_err(|_| SshError::Auth("passphrase is not text".into()))?,
-                ))
+                Some(SecretString::new(String::from_utf8(bytes).map_err(
+                    |_| SshError::Auth("passphrase is not text".into()),
+                )?))
             }
             None => None,
         };
@@ -253,7 +271,10 @@ impl OpsDeckApp {
         }
 
         let (prompt_tx, prompt_rx) = mpsc::unbounded_channel();
-        let ssh = Arc::new(SessionManager::new(prompt_tx, &config_dir.join("known_hosts.json")));
+        let ssh = Arc::new(SessionManager::new(
+            prompt_tx,
+            &config_dir.join("known_hosts.json"),
+        ));
 
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         let (transfer_tx, transfer_rx) = mpsc::unbounded_channel();
@@ -268,7 +289,10 @@ impl OpsDeckApp {
         let _ = transfers.restore_after_restart().await;
 
         let vault: Arc<Mutex<Option<Vault>>> = Arc::new(Mutex::new(None));
-        let creds = Arc::new(AppCredentials { storage: storage.clone(), vault: vault.clone() });
+        let creds = Arc::new(AppCredentials {
+            storage: storage.clone(),
+            vault: vault.clone(),
+        });
 
         // Background session list poller.
         {
@@ -296,14 +320,25 @@ impl OpsDeckApp {
         let verifier_path = config_dir.join("vault.json");
         let has_vault = verifier_path.exists();
         let mut state = UiState::new();
-        state.screen = Screen::Locked { first_run: !has_vault };
+        state.screen = Screen::Locked {
+            first_run: !has_vault,
+        };
         state.theme_name = theme.name.clone();
 
         // Sync settings → view.
-        let sync_kind = storage.get_setting("sync.kind").await?.unwrap_or_else(|| "off".to_string());
+        let sync_kind = storage
+            .get_setting("sync.kind")
+            .await?
+            .unwrap_or_else(|| "off".to_string());
         state.sync_kind = sync_kind.clone();
-        state.sync_file_dir = storage.get_setting("sync.file_dir").await?.unwrap_or_default();
-        state.sync_http_endpoint = storage.get_setting("sync.http_endpoint").await?.unwrap_or_default();
+        state.sync_file_dir = storage
+            .get_setting("sync.file_dir")
+            .await?
+            .unwrap_or_default();
+        state.sync_http_endpoint = storage
+            .get_setting("sync.http_endpoint")
+            .await?
+            .unwrap_or_default();
         let sync_view = SyncStatusView {
             running: false,
             last_sync: None,
@@ -363,8 +398,18 @@ impl OpsDeckApp {
         let hosts = self.storage.hosts().list_all().await.unwrap_or_default();
         let groups = self.storage.groups().list_all().await.unwrap_or_default();
         let snippets = self.storage.snippets().list_all().await.unwrap_or_default();
-        let credentials = self.storage.credentials().list_meta().await.unwrap_or_default();
-        let transfers = self.storage.transfers().list_recent(200).await.unwrap_or_default();
+        let credentials = self
+            .storage
+            .credentials()
+            .list_meta()
+            .await
+            .unwrap_or_default();
+        let transfers = self
+            .storage
+            .transfers()
+            .list_recent(200)
+            .await
+            .unwrap_or_default();
         self.cached = CachedData {
             hosts,
             groups,
@@ -428,7 +473,11 @@ impl OpsDeckApp {
         while let Ok(ev) = self.transfer_rx.try_recv() {
             self.activity = true;
             match ev {
-                QueueEvent::Progress { task_id, bytes_done, .. } => {
+                QueueEvent::Progress {
+                    task_id,
+                    bytes_done,
+                    ..
+                } => {
                     if let Some(t) = self.cached.transfers.iter_mut().find(|t| t.id == task_id) {
                         t.bytes_done = bytes_done as i64;
                     }
@@ -446,8 +495,15 @@ impl OpsDeckApp {
 
     fn on_shell_closed(&mut self, session: SessionId) {
         self.shells.remove(&session);
-        let name = self.session_names.remove(&session).unwrap_or_else(|| "session".to_string());
-        let host_id = self.host_sessions.iter().find(|(_, s)| **s == session).map(|(h, _)| h.clone());
+        let name = self
+            .session_names
+            .remove(&session)
+            .unwrap_or_else(|| "session".to_string());
+        let host_id = self
+            .host_sessions
+            .iter()
+            .find(|(_, s)| **s == session)
+            .map(|(h, _)| h.clone());
         // Mark the ssh session disconnected so the UI shows the notice.
         let ssh = self.ssh.clone();
         let sftp = self.sftp.clone();
@@ -473,13 +529,20 @@ impl OpsDeckApp {
                 Instant::now(),
             ),
         );
-        self.state.toast(format!("{name}: connection closed"), false);
+        self.state
+            .toast(format!("{name}: connection closed"), false);
     }
 
     #[allow(clippy::too_many_lines)]
     fn on_app_msg(&mut self, _ctx: &egui::Context, msg: AppMsg) {
         match msg {
-            AppMsg::Connected { host_id, session, shell, open_tab, split_into } => {
+            AppMsg::Connected {
+                host_id,
+                session,
+                shell,
+                open_tab,
+                split_into,
+            } => {
                 self.connecting.remove(&host_id);
                 let name = self
                     .cached
@@ -500,11 +563,17 @@ impl OpsDeckApp {
                 if let Some((tab_idx, vertical)) = split_into {
                     if let Some(tab) = self.state.tabs.get_mut(tab_idx) {
                         tab.vertical = vertical;
-                        tab.panes.push(opsdeck_ui::Pane { session, host_id: String::new(), title: name.clone() });
+                        tab.panes.push(opsdeck_ui::Pane {
+                            session,
+                            host_id: String::new(),
+                            title: name.clone(),
+                        });
                         tab.active_pane = tab.panes.len() - 1;
                     }
                 } else if open_tab {
-                    self.state.tabs.push(TermTab::single(session, String::new(), name.clone()));
+                    self.state
+                        .tabs
+                        .push(TermTab::single(session, String::new(), name.clone()));
                     self.state.active_tab = self.state.tabs.len() - 1;
                     self.state.main_tab = MainTab::Terminal;
                 }
@@ -525,9 +594,15 @@ impl OpsDeckApp {
             }
             AppMsg::ConnectFailed { host_id, error } => {
                 self.connecting.remove(&host_id);
-                self.state.toast(format!("Connection failed: {error}"), true);
+                self.state
+                    .toast(format!("Connection failed: {error}"), true);
             }
-            AppMsg::Reconnected { old, new, host_id, shell } => {
+            AppMsg::Reconnected {
+                old,
+                new,
+                host_id,
+                shell,
+            } => {
                 // Move terminal state to the new session id.
                 if let Some(term) = self.state.terminals.remove(&old) {
                     self.state.terminals.insert(new, term);
@@ -557,7 +632,11 @@ impl OpsDeckApp {
             AppMsg::SessionList(list) => {
                 self.sessions = list;
             }
-            AppMsg::SftpListed { host_id, path, result } => {
+            AppMsg::SftpListed {
+                host_id,
+                path,
+                result,
+            } => {
                 let listing = self.sftp_listings.entry(host_id.clone()).or_default();
                 listing.loading = false;
                 match result {
@@ -572,21 +651,27 @@ impl OpsDeckApp {
                     }
                 }
             }
-            AppMsg::SftpOpDone { host_id, result, what } => {
-                match result {
-                    Ok(()) => {
-                        self.state.toast(format!("{what} done"), false);
-                        let path = self.state.sftp_path(&host_id);
-                        self.navigate_sftp(&host_id, &path);
-                    }
-                    Err(e) => self.state.toast(format!("{what} failed: {e}"), true),
+            AppMsg::SftpOpDone {
+                host_id,
+                result,
+                what,
+            } => match result {
+                Ok(()) => {
+                    self.state.toast(format!("{what} done"), false);
+                    let path = self.state.sftp_path(&host_id);
+                    self.navigate_sftp(&host_id, &path);
                 }
-            }
+                Err(e) => self.state.toast(format!("{what} failed: {e}"), true),
+            },
             AppMsg::BatchDone { results } => {
                 self.state.batch_output = results;
                 self.state.toast("Batch run finished", false);
             }
-            AppMsg::MetricUpdate { host_id, snapshot, processes } => {
+            AppMsg::MetricUpdate {
+                host_id,
+                snapshot,
+                processes,
+            } => {
                 let entry = self.metrics.entry(host_id.clone()).or_default();
                 entry.push(snapshot.clone());
                 if entry.len() > 120 {
@@ -599,17 +684,30 @@ impl OpsDeckApp {
                     let _ = storage.metrics().insert(&snapshot).await;
                 });
             }
-            AppMsg::ForwardStarted { id, session, local, remote, forward } => {
+            AppMsg::ForwardStarted {
+                id,
+                session,
+                local,
+                remote,
+                forward,
+            } => {
                 let session_name = self
                     .session_names
                     .get(&session)
                     .cloned()
                     .unwrap_or_else(|| "session".to_string());
-                self.forwards.push(RunningForward { id, session_name, local: local.clone(), remote, forward });
+                self.forwards.push(RunningForward {
+                    id,
+                    session_name,
+                    local: local.clone(),
+                    remote,
+                    forward,
+                });
                 self.state.toast(format!("Forwarding {local}"), false);
             }
             AppMsg::ForwardFailed { error } => {
-                self.state.toast(format!("Port forward failed: {error}"), true);
+                self.state
+                    .toast(format!("Port forward failed: {error}"), true);
             }
             AppMsg::SyncDone { result } => {
                 self.sync_view.running = false;
@@ -636,7 +734,9 @@ impl OpsDeckApp {
             }
             AppMsg::RekeyDone { result } => match result {
                 Ok(()) => self.state.toast("Master password changed", false),
-                Err(e) => self.state.toast(format!("Password change failed: {e}"), true),
+                Err(e) => self
+                    .state
+                    .toast(format!("Password change failed: {e}"), true),
             },
             AppMsg::UpdateDone { result } => {
                 self.update_view.checking = false;
@@ -647,7 +747,8 @@ impl OpsDeckApp {
                         self.update_view.url = Some(info.url.clone());
                         self.update_view.error = None;
                         if info.available {
-                            self.state.toast(format!("Update available: {}", info.latest), false);
+                            self.state
+                                .toast(format!("Update available: {}", info.latest), false);
                         } else {
                             self.state.toast("You're up to date", false);
                         }
@@ -695,7 +796,8 @@ impl OpsDeckApp {
         }
         chain.reverse();
 
-        self.connecting.insert(host_id.to_string(), "Connecting…".to_string());
+        self.connecting
+            .insert(host_id.to_string(), "Connecting…".to_string());
         let ssh = self.ssh.clone();
         let creds = self.creds.clone();
         let tx = self.msg_tx.clone();
@@ -706,15 +808,27 @@ impl OpsDeckApp {
             match ssh.connect_chain(&chain, creds.as_ref()).await {
                 Ok(session) => match ssh.open_shell(session, cols, rows).await {
                     Ok(shell) => {
-                        let _ = tx.send(AppMsg::Connected { host_id, session, shell, open_tab, split_into });
+                        let _ = tx.send(AppMsg::Connected {
+                            host_id,
+                            session,
+                            shell,
+                            open_tab,
+                            split_into,
+                        });
                     }
                     Err(e) => {
                         let _ = ssh.disconnect(session).await;
-                        let _ = tx.send(AppMsg::ConnectFailed { host_id, error: format!("shell: {e}") });
+                        let _ = tx.send(AppMsg::ConnectFailed {
+                            host_id,
+                            error: format!("shell: {e}"),
+                        });
                     }
                 },
                 Err(e) => {
-                    let _ = tx.send(AppMsg::ConnectFailed { host_id, error: e.to_string() });
+                    let _ = tx.send(AppMsg::ConnectFailed {
+                        host_id,
+                        error: e.to_string(),
+                    });
                 }
             }
         });
@@ -726,7 +840,11 @@ impl OpsDeckApp {
         }
         let ssh = self.ssh.clone();
         let sftp = self.sftp.clone();
-        let host_id = self.host_sessions.iter().find(|(_, s)| **s == session).map(|(h, _)| h.clone());
+        let host_id = self
+            .host_sessions
+            .iter()
+            .find(|(_, s)| **s == session)
+            .map(|(h, _)| h.clone());
         tokio::spawn(async move {
             let _ = ssh.disconnect(session).await;
             if let Some(h) = host_id {
@@ -740,7 +858,8 @@ impl OpsDeckApp {
 
     fn navigate_sftp(&mut self, host_id: &str, path: &str) {
         let Some(session) = self.host_sessions.get(host_id).cloned() else {
-            self.state.toast("Connect the host first (Terminal tab)", true);
+            self.state
+                .toast("Connect the host first (Terminal tab)", true);
             return;
         };
         let listing = self.sftp_listings.entry(host_id.to_string()).or_default();
@@ -751,8 +870,15 @@ impl OpsDeckApp {
         let host_id = host_id.to_string();
         let path = path.to_string();
         tokio::spawn(async move {
-            let result = sftp.list_dir(session, &path).await.map_err(|e| e.to_string());
-            let _ = tx.send(AppMsg::SftpListed { host_id, path, result });
+            let result = sftp
+                .list_dir(session, &path)
+                .await
+                .map_err(|e| e.to_string());
+            let _ = tx.send(AppMsg::SftpListed {
+                host_id,
+                path,
+                result,
+            });
         });
     }
 
@@ -761,7 +887,8 @@ impl OpsDeckApp {
             return;
         }
         let Some(session) = self.host_sessions.get(host_id).cloned() else {
-            self.state.toast("Connect the host first (Terminal tab)", true);
+            self.state
+                .toast("Connect the host first (Terminal tab)", true);
             return;
         };
         let collector = self.metrics_collector.clone();
@@ -793,7 +920,11 @@ impl OpsDeckApp {
                     Ok(snap) => {
                         let procs = collector.top_processes(session).await.unwrap_or_default();
                         if tx
-                            .send(AppMsg::MetricUpdate { host_id: host_id.clone(), snapshot: snap, processes: procs })
+                            .send(AppMsg::MetricUpdate {
+                                host_id: host_id.clone(),
+                                snapshot: snap,
+                                processes: procs,
+                            })
                             .is_err()
                         {
                             break;
@@ -809,8 +940,8 @@ impl OpsDeckApp {
     // -- vault -----------------------------------------------------------------
 
     fn load_verifier(&self) -> Result<VaultVerifier, String> {
-        let json =
-            std::fs::read_to_string(&self.verifier_path).map_err(|e| format!("read verifier: {e}"))?;
+        let json = std::fs::read_to_string(&self.verifier_path)
+            .map_err(|e| format!("read verifier: {e}"))?;
         serde_json::from_str(&json).map_err(|e| format!("parse verifier: {e}"))
     }
 
@@ -827,19 +958,17 @@ impl OpsDeckApp {
         let _ = ctx;
         match event {
             // -- vault ------------------------------------------------------
-            UiEvent::CreateVault(password) => {
-                match Vault::create(&SecretString::new(password)) {
-                    Ok((vault, verifier)) => match self.save_verifier(&verifier) {
-                        Ok(()) => {
-                            *self.vault.blocking_lock() = Some(vault);
-                            self.state.screen = Screen::Main;
-                            self.state.toast("Vault created", false);
-                        }
-                        Err(e) => self.state.toast(format!("Cannot save vault: {e}"), true),
-                    },
-                    Err(e) => self.state.toast(format!("Cannot create vault: {e}"), true),
-                }
-            }
+            UiEvent::CreateVault(password) => match Vault::create(&SecretString::new(password)) {
+                Ok((vault, verifier)) => match self.save_verifier(&verifier) {
+                    Ok(()) => {
+                        *self.vault.blocking_lock() = Some(vault);
+                        self.state.screen = Screen::Main;
+                        self.state.toast("Vault created", false);
+                    }
+                    Err(e) => self.state.toast(format!("Cannot save vault: {e}"), true),
+                },
+                Err(e) => self.state.toast(format!("Cannot create vault: {e}"), true),
+            },
             UiEvent::UnlockVault(password) => {
                 match self.load_verifier().and_then(|v| {
                     Vault::unlock(&SecretString::new(password), &v).map_err(|e| e.to_string())
@@ -883,8 +1012,11 @@ impl OpsDeckApp {
                         let old_vault = Vault::unlock(&SecretString::new(old), &verifier)
                             .map_err(|_| "Current password is wrong".to_string())?;
                         // Decrypt everything with the OLD key first.
-                        let metas =
-                            storage.credentials().list_meta().await.map_err(|e| e.to_string())?;
+                        let metas = storage
+                            .credentials()
+                            .list_meta()
+                            .await
+                            .map_err(|e| e.to_string())?;
                         let mut plaintexts = Vec::with_capacity(metas.len());
                         for meta in &metas {
                             let cred = storage
@@ -900,8 +1032,9 @@ impl OpsDeckApp {
                                     .map_err(|_| "bad nonce".to_string())?,
                                 ciphertext: cred.ciphertext.clone(),
                             };
-                            let pt =
-                                old_vault.decrypt(&blob).map_err(|e| format!("decrypt: {e}"))?;
+                            let pt = old_vault
+                                .decrypt(&blob)
+                                .map_err(|e| format!("decrypt: {e}"))?;
                             plaintexts.push((cred.id.clone(), pt));
                         }
                         // Derive the NEW key and re-encrypt.
@@ -911,12 +1044,19 @@ impl OpsDeckApp {
                         for (id, pt) in &plaintexts {
                             let blob =
                                 new_vault.encrypt(pt).map_err(|e| format!("encrypt: {e}"))?;
-                            let mut cred =
-                                storage.credentials().get(id).await.map_err(|e| e.to_string())?;
+                            let mut cred = storage
+                                .credentials()
+                                .get(id)
+                                .await
+                                .map_err(|e| e.to_string())?;
                             cred.nonce = blob.nonce.to_vec();
                             cred.ciphertext = blob.ciphertext;
                             cred.updated_at = now_unix();
-                            storage.credentials().upsert(&cred).await.map_err(|e| e.to_string())?;
+                            storage
+                                .credentials()
+                                .upsert(&cred)
+                                .await
+                                .map_err(|e| e.to_string())?;
                         }
                         let json = serde_json::to_string_pretty(&new_verifier)
                             .map_err(|e| e.to_string())?;
@@ -949,14 +1089,25 @@ impl OpsDeckApp {
                     match ssh.reconnect(old, creds.as_ref()).await {
                         Ok(new) => match ssh.open_shell(new, 80, 24).await {
                             Ok(shell) => {
-                                let _ = tx.send(AppMsg::Reconnected { old, new, host_id, shell });
+                                let _ = tx.send(AppMsg::Reconnected {
+                                    old,
+                                    new,
+                                    host_id,
+                                    shell,
+                                });
                             }
                             Err(e) => {
-                                let _ = tx.send(AppMsg::ConnectFailed { host_id, error: e.to_string() });
+                                let _ = tx.send(AppMsg::ConnectFailed {
+                                    host_id,
+                                    error: e.to_string(),
+                                });
                             }
                         },
                         Err(e) => {
-                            let _ = tx.send(AppMsg::ConnectFailed { host_id, error: e.to_string() });
+                            let _ = tx.send(AppMsg::ConnectFailed {
+                                host_id,
+                                error: e.to_string(),
+                            });
                         }
                     }
                 });
@@ -1005,7 +1156,10 @@ impl OpsDeckApp {
                 }
             }
             UiEvent::ClosePane(session) => self.disconnect_session(session),
-            UiEvent::HostKeyDecision { prompt_id, decision } => {
+            UiEvent::HostKeyDecision {
+                prompt_id,
+                decision,
+            } => {
                 if let Some(pos) = self.pending_prompts.iter().position(|p| p.id == prompt_id) {
                     let pending = self.pending_prompts.remove(pos);
                     let _ = pending.responder.send(decision);
@@ -1021,7 +1175,11 @@ impl OpsDeckApp {
                     let host_id_c = host_id.clone();
                     tokio::spawn(async move {
                         let result = sftp.mkdir(session, &path).await.map_err(|e| e.to_string());
-                        let _ = tx.send(AppMsg::SftpOpDone { host_id: host_id_c, result, what: "mkdir".to_string() });
+                        let _ = tx.send(AppMsg::SftpOpDone {
+                            host_id: host_id_c,
+                            result,
+                            what: "mkdir".to_string(),
+                        });
                     });
                 }
             }
@@ -1031,7 +1189,11 @@ impl OpsDeckApp {
                     let tx = self.msg_tx.clone();
                     tokio::spawn(async move {
                         let result = sftp.remove(session, &path).await.map_err(|e| e.to_string());
-                        let _ = tx.send(AppMsg::SftpOpDone { host_id, result, what: "delete".to_string() });
+                        let _ = tx.send(AppMsg::SftpOpDone {
+                            host_id,
+                            result,
+                            what: "delete".to_string(),
+                        });
                     });
                 }
             }
@@ -1040,13 +1202,25 @@ impl OpsDeckApp {
                     let sftp = self.sftp.clone();
                     let tx = self.msg_tx.clone();
                     tokio::spawn(async move {
-                        let result = sftp.rename(session, &from, &to).await.map_err(|e| e.to_string());
-                        let _ = tx.send(AppMsg::SftpOpDone { host_id, result, what: "rename".to_string() });
+                        let result = sftp
+                            .rename(session, &from, &to)
+                            .await
+                            .map_err(|e| e.to_string());
+                        let _ = tx.send(AppMsg::SftpOpDone {
+                            host_id,
+                            result,
+                            what: "rename".to_string(),
+                        });
                     });
                 }
             }
-            UiEvent::SftpUpload { host_id, local, remote } => {
-                let task = TransferQueue::new_task(&host_id, TransferDirection::Upload, &local, &remote);
+            UiEvent::SftpUpload {
+                host_id,
+                local,
+                remote,
+            } => {
+                let task =
+                    TransferQueue::new_task(&host_id, TransferDirection::Upload, &local, &remote);
                 let transfers = self.transfers.clone();
                 tokio::spawn(async move {
                     if let Err(e) = transfers.enqueue(task).await {
@@ -1056,8 +1230,13 @@ impl OpsDeckApp {
                 self.cache_dirty = true;
                 self.state.toast("Upload queued", false);
             }
-            UiEvent::SftpDownload { host_id, remote, local } => {
-                let task = TransferQueue::new_task(&host_id, TransferDirection::Download, &local, &remote);
+            UiEvent::SftpDownload {
+                host_id,
+                remote,
+                local,
+            } => {
+                let task =
+                    TransferQueue::new_task(&host_id, TransferDirection::Download, &local, &remote);
                 let transfers = self.transfers.clone();
                 tokio::spawn(async move {
                     if let Err(e) = transfers.enqueue(task).await {
@@ -1096,7 +1275,10 @@ impl OpsDeckApp {
             }
 
             // -- snippets ---------------------------------------------------
-            UiEvent::RunSnippet { snippet_id, session } => {
+            UiEvent::RunSnippet {
+                snippet_id,
+                session,
+            } => {
                 if let Some(snippet) = self.cached.snippets.iter().find(|s| s.id == snippet_id) {
                     let mut cmd = snippet.command.clone();
                     cmd.push('\n');
@@ -1116,7 +1298,15 @@ impl OpsDeckApp {
                             s.title = form.title;
                             s.command = form.command;
                             s.description = Some(form.description).filter(|d| !d.is_empty());
-                            s.tags = serde_json::to_string(&form.tags.split(',').map(str::trim).filter(|t| !t.is_empty()).collect::<Vec<_>>()).unwrap_or_default();
+                            s.tags = serde_json::to_string(
+                                &form
+                                    .tags
+                                    .split(',')
+                                    .map(str::trim)
+                                    .filter(|t| !t.is_empty())
+                                    .collect::<Vec<_>>(),
+                            )
+                            .unwrap_or_default();
                             s.updated_at = now;
                             let _ = storage.snippets().update(&s).await;
                         }
@@ -1127,7 +1317,15 @@ impl OpsDeckApp {
                             command: form.command,
                             description: Some(form.description).filter(|d| !d.is_empty()),
                             host_id: None,
-                            tags: serde_json::to_string(&form.tags.split(',').map(str::trim).filter(|t| !t.is_empty()).collect::<Vec<_>>()).unwrap_or_default(),
+                            tags: serde_json::to_string(
+                                &form
+                                    .tags
+                                    .split(',')
+                                    .map(str::trim)
+                                    .filter(|t| !t.is_empty())
+                                    .collect::<Vec<_>>(),
+                            )
+                            .unwrap_or_default(),
                             created_at: now,
                             updated_at: now,
                         };
@@ -1145,7 +1343,11 @@ impl OpsDeckApp {
             }
 
             // -- batch ------------------------------------------------------
-            UiEvent::BatchRun { sessions, command, allow_dangerous } => {
+            UiEvent::BatchRun {
+                sessions,
+                command,
+                allow_dangerous,
+            } => {
                 let ssh = self.ssh.clone();
                 let tx = self.msg_tx.clone();
                 let names = self.session_names.clone();
@@ -1182,29 +1384,45 @@ impl OpsDeckApp {
             }
 
             // -- port forwarding --------------------------------------------
-            UiEvent::StartForward { session, bind, remote_host, remote_port } => {
-                match bind.parse::<std::net::SocketAddr>() {
-                    Ok(addr) => {
-                        let ssh = self.ssh.clone();
-                        let tx = self.msg_tx.clone();
-                        let id = self.next_forward_id;
-                        self.next_forward_id += 1;
-                        let local = bind.clone();
-                        let remote = format!("{remote_host}:{remote_port}");
-                        tokio::spawn(async move {
-                            match ssh.start_local_forward(session, addr, remote_host, remote_port).await {
-                                Ok(forward) => {
-                                    let _ = tx.send(AppMsg::ForwardStarted { id, session, local, remote, forward });
-                                }
-                                Err(e) => {
-                                    let _ = tx.send(AppMsg::ForwardFailed { error: e.to_string() });
-                                }
+            UiEvent::StartForward {
+                session,
+                bind,
+                remote_host,
+                remote_port,
+            } => match bind.parse::<std::net::SocketAddr>() {
+                Ok(addr) => {
+                    let ssh = self.ssh.clone();
+                    let tx = self.msg_tx.clone();
+                    let id = self.next_forward_id;
+                    self.next_forward_id += 1;
+                    let local = bind.clone();
+                    let remote = format!("{remote_host}:{remote_port}");
+                    tokio::spawn(async move {
+                        match ssh
+                            .start_local_forward(session, addr, remote_host, remote_port)
+                            .await
+                        {
+                            Ok(forward) => {
+                                let _ = tx.send(AppMsg::ForwardStarted {
+                                    id,
+                                    session,
+                                    local,
+                                    remote,
+                                    forward,
+                                });
                             }
-                        });
-                    }
-                    Err(_) => self.state.toast("Bad bind address (use 127.0.0.1:8080)", true),
+                            Err(e) => {
+                                let _ = tx.send(AppMsg::ForwardFailed {
+                                    error: e.to_string(),
+                                });
+                            }
+                        }
+                    });
                 }
-            }
+                Err(_) => self
+                    .state
+                    .toast("Bad bind address (use 127.0.0.1:8080)", true),
+            },
             UiEvent::StopForward(id) => {
                 if let Some(pos) = self.forwards.iter().position(|f| f.id == id) {
                     let fwd = self.forwards.remove(pos);
@@ -1271,21 +1489,27 @@ impl OpsDeckApp {
         let vault = self.vault.clone();
         tokio::spawn(async move {
             // Resolve or create the credential.
-            let mut credential_id = if form.credential_id.is_empty() { None } else { Some(form.credential_id.clone()) };
+            let mut credential_id = if form.credential_id.is_empty() {
+                None
+            } else {
+                Some(form.credential_id.clone())
+            };
             let mut passphrase_credential_id: Option<String> = None;
 
-            let encrypt_secret = |vault: &Vault, plaintext: &[u8]| -> Result<(Vec<u8>, Vec<u8>), VaultError> {
-                let blob = vault.encrypt(plaintext)?;
-                Ok((blob.nonce.to_vec(), blob.ciphertext))
-            };
+            let encrypt_secret =
+                |vault: &Vault, plaintext: &[u8]| -> Result<(Vec<u8>, Vec<u8>), VaultError> {
+                    let blob = vault.encrypt(plaintext)?;
+                    Ok((blob.nonce.to_vec(), blob.ciphertext))
+                };
 
             if credential_id.is_none() {
                 let guard = vault.lock().await;
                 let Some(v) = guard.as_ref() else { return };
                 let (kind, secret): (CredentialKind, Vec<u8>) = match form.auth_type.as_str() {
-                    "private_key" if !form.private_key_pem.trim().is_empty() => {
-                        (CredentialKind::PrivateKey, form.private_key_pem.as_bytes().to_vec())
-                    }
+                    "private_key" if !form.private_key_pem.trim().is_empty() => (
+                        CredentialKind::PrivateKey,
+                        form.private_key_pem.as_bytes().to_vec(),
+                    ),
                     "agent" => {
                         // Agent auth needs no stored secret.
                         (CredentialKind::Agent, Vec::new())
@@ -1318,7 +1542,9 @@ impl OpsDeckApp {
                     }
                     // Key passphrase as a separate credential.
                     if kind == CredentialKind::PrivateKey && !form.passphrase.is_empty() {
-                        if let Ok((nonce, ciphertext)) = encrypt_secret(v, form.passphrase.as_bytes()) {
+                        if let Ok((nonce, ciphertext)) =
+                            encrypt_secret(v, form.passphrase.as_bytes())
+                        {
                             let cred = Credential {
                                 id: uuid::Uuid::new_v4().to_string(),
                                 name: format!("{} key passphrase", form.name),
@@ -1337,7 +1563,12 @@ impl OpsDeckApp {
             }
 
             let tags_json = serde_json::to_string(
-                &form.tags.split(',').map(str::trim).filter(|t| !t.is_empty()).collect::<Vec<_>>(),
+                &form
+                    .tags
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty())
+                    .collect::<Vec<_>>(),
             )
             .unwrap_or_else(|_| "[]".to_string());
 
@@ -1348,11 +1579,21 @@ impl OpsDeckApp {
                     host.port = form.port.parse().unwrap_or(22);
                     host.username = form.username;
                     host.auth_type = form.auth_type;
-                    host.group_id = if form.group_id.is_empty() { None } else { Some(form.group_id) };
-                    host.proxy_jump_id =
-                        if form.proxy_jump_id.is_empty() { None } else { Some(form.proxy_jump_id) };
-                    host.startup_command =
-                        if form.startup_command.is_empty() { None } else { Some(form.startup_command) };
+                    host.group_id = if form.group_id.is_empty() {
+                        None
+                    } else {
+                        Some(form.group_id)
+                    };
+                    host.proxy_jump_id = if form.proxy_jump_id.is_empty() {
+                        None
+                    } else {
+                        Some(form.proxy_jump_id)
+                    };
+                    host.startup_command = if form.startup_command.is_empty() {
+                        None
+                    } else {
+                        Some(form.startup_command)
+                    };
                     host.tags = tags_json;
                     host.favorite = form.favorite;
                     if credential_id.is_some() {
@@ -1368,11 +1609,21 @@ impl OpsDeckApp {
                 let mut host = Host::new(form.name, form.host, form.username);
                 host.port = form.port.parse().unwrap_or(22);
                 host.auth_type = form.auth_type;
-                host.group_id = if form.group_id.is_empty() { None } else { Some(form.group_id) };
-                host.proxy_jump_id =
-                    if form.proxy_jump_id.is_empty() { None } else { Some(form.proxy_jump_id) };
-                host.startup_command =
-                    if form.startup_command.is_empty() { None } else { Some(form.startup_command) };
+                host.group_id = if form.group_id.is_empty() {
+                    None
+                } else {
+                    Some(form.group_id)
+                };
+                host.proxy_jump_id = if form.proxy_jump_id.is_empty() {
+                    None
+                } else {
+                    Some(form.proxy_jump_id)
+                };
+                host.startup_command = if form.startup_command.is_empty() {
+                    None
+                } else {
+                    Some(form.startup_command)
+                };
                 host.tags = tags_json;
                 host.favorite = form.favorite;
                 host.credential_id = credential_id;
@@ -1432,7 +1683,8 @@ impl OpsDeckApp {
         }
         let kind = self.state.sync_kind.clone();
         if kind == "off" {
-            self.state.toast("Sync is off — pick a mode in Settings", true);
+            self.state
+                .toast("Sync is off — pick a mode in Settings", true);
             return;
         }
         let vault = {
@@ -1451,12 +1703,16 @@ impl OpsDeckApp {
         let file_dir = self.state.sync_file_dir.clone();
         let endpoint = self.state.sync_http_endpoint.clone();
         tokio::spawn(async move {
-            let device = device_id(&storage).await.unwrap_or_else(|_| "unknown".to_string());
+            let device = device_id(&storage)
+                .await
+                .unwrap_or_else(|_| "unknown".to_string());
             let remote: Arc<dyn Remote> = match kind.as_str() {
                 "file" => Arc::new(FileRemote::new(file_dir)),
                 "http" => Arc::new(HttpRemote::with_endpoint(&endpoint, &device)),
                 _ => {
-                    let _ = tx.send(AppMsg::SyncDone { result: Err("unknown sync mode".to_string()) });
+                    let _ = tx.send(AppMsg::SyncDone {
+                        result: Err("unknown sync mode".to_string()),
+                    });
                     return;
                 }
             };
@@ -1493,13 +1749,21 @@ impl eframe::App for OpsDeckApp {
                             storage.groups().list_all().await.unwrap_or_default(),
                             storage.snippets().list_all().await.unwrap_or_default(),
                             storage.credentials().list_meta().await.unwrap_or_default(),
-                            storage.transfers().list_recent(200).await.unwrap_or_default(),
+                            storage
+                                .transfers()
+                                .list_recent(200)
+                                .await
+                                .unwrap_or_default(),
                         )
                     })
                 });
             // Preserve live progress updates already applied to the cached vec.
-            let progress: HashMap<String, i64> =
-                self.cached.transfers.iter().map(|t| (t.id.clone(), t.bytes_done)).collect();
+            let progress: HashMap<String, i64> = self
+                .cached
+                .transfers
+                .iter()
+                .map(|t| (t.id.clone(), t.bytes_done))
+                .collect();
             let mut transfers = transfers;
             for t in &mut transfers {
                 if let Some(done) = progress.get(&t.id) {
@@ -1543,8 +1807,11 @@ impl eframe::App for OpsDeckApp {
 
         // Build UiData. Prompts and forwards need owned scratch vecs that live
         // for the whole render call.
-        let prompt_views: Vec<KeyPromptView> =
-            self.pending_prompts.iter().map(|p| p.view.clone()).collect();
+        let prompt_views: Vec<KeyPromptView> = self
+            .pending_prompts
+            .iter()
+            .map(|p| p.view.clone())
+            .collect();
         let forward_views: Vec<ForwardView> = self
             .forwards
             .iter()
@@ -1595,7 +1862,9 @@ impl eframe::App for OpsDeckApp {
 fn open_url(url: &str) {
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn();
     }
     #[cfg(target_os = "macos")]
     {

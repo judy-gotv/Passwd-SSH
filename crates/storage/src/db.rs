@@ -1,8 +1,8 @@
 //! Database handle: connection pool + migrations.
 //! Author: Passwd Word
 
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::Path;
 use std::str::FromStr;
 
@@ -89,8 +89,14 @@ mod tests {
         let db = Storage::open_in_memory().await.unwrap();
         assert_eq!(db.get_setting("theme").await.unwrap(), None);
         db.set_setting("theme", "dark").await.unwrap();
-        assert_eq!(db.get_setting("theme").await.unwrap().as_deref(), Some("dark"));
+        assert_eq!(
+            db.get_setting("theme").await.unwrap().as_deref(),
+            Some("dark")
+        );
         db.set_setting("theme", "light").await.unwrap();
-        assert_eq!(db.get_setting("theme").await.unwrap().as_deref(), Some("light"));
+        assert_eq!(
+            db.get_setting("theme").await.unwrap().as_deref(),
+            Some("light")
+        );
     }
 }

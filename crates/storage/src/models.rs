@@ -87,7 +87,11 @@ pub struct Host {
 
 impl Host {
     /// Build a new host with sensible defaults.
-    pub fn new(name: impl Into<String>, host: impl Into<String>, username: impl Into<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        host: impl Into<String>,
+        username: impl Into<String>,
+    ) -> Self {
         let now = now_unix();
         Self {
             id: new_id(),
@@ -121,16 +125,25 @@ impl Host {
                 let key_id = self
                     .credential_id
                     .as_deref()
-                    .ok_or_else(|| crate::StorageError::InvalidData("private_key without key credential".into()))
+                    .ok_or_else(|| {
+                        crate::StorageError::InvalidData(
+                            "private_key without key credential".into(),
+                        )
+                    })
                     .and_then(parse_uuid)?;
                 let passphrase_id = self
                     .passphrase_credential_id
                     .as_deref()
                     .map(parse_uuid)
                     .transpose()?;
-                Ok(AuthMethod::PrivateKey { key_id, passphrase_id })
+                Ok(AuthMethod::PrivateKey {
+                    key_id,
+                    passphrase_id,
+                })
             }
-            other => Err(crate::StorageError::InvalidData(format!("unknown auth_type: {other}"))),
+            other => Err(crate::StorageError::InvalidData(format!(
+                "unknown auth_type: {other}"
+            ))),
         }
     }
 
@@ -377,7 +390,9 @@ impl TransferTask {
     /// Progress ratio in `[0.0, 1.0]`, if the total size is known.
     pub fn progress(&self) -> Option<f64> {
         match self.bytes_total {
-            Some(total) if total > 0 => Some((self.bytes_done as f64 / total as f64).clamp(0.0, 1.0)),
+            Some(total) if total > 0 => {
+                Some((self.bytes_done as f64 / total as f64).clamp(0.0, 1.0))
+            }
             _ => None,
         }
     }
