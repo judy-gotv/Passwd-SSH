@@ -125,6 +125,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          gh --version
+          ls -la dist/
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --title "OpsDeck ${GITHUB_REF_NAME}" \
             --notes "OpsDeck ${GITHUB_REF_NAME} — see README.md for install instructions."
