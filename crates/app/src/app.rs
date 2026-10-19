@@ -13,9 +13,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use opsdeck_ops::{MetricsCollector, SnippetService, batch};
-use opsdeck_sftp::{
-    FileEntry, QueueEvent, RusshSftpEngine, SftpEngine, TransferDirection, TransferQueue,
-};
+use opsdeck_sftp::{FileEntry, QueueEvent, RusshSftpEngine, SftpEngine, TransferQueue};
 use opsdeck_ssh::{
     CredentialProvider, HostKeyDecision, HostKeyPrompt, LocalForward, SessionId, SessionInfo,
     SessionManager, ShellChannel, ShellCommand, ShellEvent, SshError,
@@ -23,15 +21,15 @@ use opsdeck_ssh::{
 use opsdeck_storage::Storage;
 use opsdeck_storage::models::{
     AuthMethod, Credential, CredentialKind, ExportData, Host, HostConfig, MetricSnapshot,
-    TransferTask, now_unix,
+    TransferDirection, TransferTask, now_unix,
 };
 use opsdeck_sync::{FileRemote, HttpRemote, Remote, SyncEngine, SyncSummary, device_id};
 use opsdeck_ui::{
     ForwardView, KeyPromptView, MainTab, Screen, SftpListing, SyncStatusView, TermTab, Theme,
     UiData, UiEvent, UiState, UpdateStatusView,
 };
-use opsdeck_vault::{EncryptedBlob, SecretBytes, SecretString, Vault, VaultVerifier};
-use tokio::sync::{Mutex, mpsc, oneshot};
+use opsdeck_vault::{EncryptedBlob, SecretBytes, SecretString, Vault, VaultError, VaultVerifier};
+use tokio::sync::{RwLock, mpsc, oneshot};
 
 use crate::update::{UpdateInfo, check_update};
 
@@ -129,7 +127,7 @@ struct CachedData {
 #[derive(Clone)]
 struct AppCredentials {
     storage: Storage,
-    vault: Arc<Mutex<Option<Vault>>>,
+    vault: Arc<RwLock<Option<Arc<Vault>>>>,
 }
 
 impl AppCredentials {
@@ -140,7 +138,7 @@ impl AppCredentials {
             .get(credential_id)
             .await
             .map_err(|e| SshError::Auth(format!("credential not found: {e}")))?;
-        let vault = self.vault.lock().await;
+        let vault = self.vault.read().await.clone();
         let vault = vault
             .as_ref()
             .ok_or_else(|| SshError::Auth("vault is locked".into()))?;
@@ -210,7 +208,7 @@ pub struct OpsDeckApp {
     storage: Storage,
     ssh: Arc<SessionManager>,
     creds: Arc<AppCredentials>,
-    vault: Arc<Mutex<Option<Vault>>>,
+    vault: Arc<RwLock<Option<Arc<Vault>>>>,
     verifier_path: PathBuf,
 
     msg_tx: mpsc::UnboundedSender<AppMsg>,
@@ -288,7 +286,7 @@ impl OpsDeckApp {
         // Resume interrupted transfers as paused.
         let _ = transfers.restore_after_restart().await;
 
-        let vault: Arc<Mutex<Option<Vault>>> = Arc::new(Mutex::new(None));
+        let vault: Arc<RwLock<Option<Arc<Vault>>>> = Arc::new(RwLock::new(None));
         let creds = Arc::new(AppCredentials {
             storage: storage.clone(),
             vault: vault.clone(),
@@ -423,7 +421,7 @@ impl OpsDeckApp {
 
     // -- per-frame -----------------------------------------------------------
 
-    fn drain_messages(&mut self, _ctx: &egui::Context) {
+    fn drain_messages(&mut self, ctx: &egui::Context) {
         // App messages.
         while let Ok(msg) = self.msg_rx.try_recv() {
             self.activity = true;
@@ -894,6 +892,7 @@ impl OpsDeckApp {
         let collector = self.metrics_collector.clone();
         let tx = self.metric_tx.clone();
         let host_id = host_id.to_string();
+        let monitor_key = host_id.clone();
         let storage = self.storage.clone();
         // Load recent history from the DB for the charts.
         {
@@ -934,7 +933,8 @@ impl OpsDeckApp {
                 }
             }
         });
-        self.monitor_tasks.insert(host_id, handle.abort_handle());
+        self.monitor_tasks
+            .insert(monitor_key, handle.abort_handle());
     }
 
     // -- vault -----------------------------------------------------------------
@@ -961,7 +961,7 @@ impl OpsDeckApp {
             UiEvent::CreateVault(password) => match Vault::create(&SecretString::new(password)) {
                 Ok((vault, verifier)) => match self.save_verifier(&verifier) {
                     Ok(()) => {
-                        *self.vault.blocking_lock() = Some(vault);
+                        *self.vault.blocking_write() = Some(Arc::new(vault));
                         self.state.screen = Screen::Main;
                         self.state.toast("Vault created", false);
                     }
@@ -974,7 +974,7 @@ impl OpsDeckApp {
                     Vault::unlock(&SecretString::new(password), &v).map_err(|e| e.to_string())
                 }) {
                     Ok(vault) => {
-                        *self.vault.blocking_lock() = Some(vault);
+                        *self.vault.blocking_write() = Some(Arc::new(vault));
                         self.state.screen = Screen::Main;
                         self.state.unlock_error = None;
                     }
@@ -990,7 +990,7 @@ impl OpsDeckApp {
                 for s in sessions {
                     self.disconnect_session(s);
                 }
-                *self.vault.blocking_lock() = None;
+                *self.vault.blocking_write() = None;
                 self.state.screen = Screen::Locked { first_run: false };
                 self.state.password_input.clear();
             }
@@ -1062,7 +1062,7 @@ impl OpsDeckApp {
                             .map_err(|e| e.to_string())?;
                         std::fs::write(&verifier_path, json)
                             .map_err(|e| format!("write verifier: {e}"))?;
-                        *vault_arc.lock().await = Some(new_vault);
+                        *vault_arc.write().await = Some(Arc::new(new_vault));
                         Ok(())
                     }
                     .await;
@@ -1112,7 +1112,7 @@ impl OpsDeckApp {
                     }
                 });
             }
-            UiEvent::SaveHost(form) => self.save_host(form),
+            UiEvent::SaveHost(form) => self.save_host(*form),
             UiEvent::DeleteHost(id) => {
                 let storage = self.storage.clone();
                 tokio::spawn(async move {
@@ -1433,11 +1433,11 @@ impl OpsDeckApp {
 
             // -- sync -------------------------------------------------------
             UiEvent::SetSyncKind(kind) => {
+                self.sync_view.configured = kind != "off";
                 let storage = self.storage.clone();
                 tokio::spawn(async move {
                     let _ = storage.set_setting("sync.kind", &kind).await;
                 });
-                self.sync_view.configured = kind != "off";
             }
             UiEvent::SyncNow => self.start_sync(),
 
@@ -1503,8 +1503,8 @@ impl OpsDeckApp {
                 };
 
             if credential_id.is_none() {
-                let guard = vault.lock().await;
-                let Some(v) = guard.as_ref() else { return };
+                let vault = vault.read().await.clone();
+                let Some(v) = vault.as_ref() else { return };
                 let (kind, secret): (CredentialKind, Vec<u8>) = match form.auth_type.as_str() {
                     "private_key" if !form.private_key_pem.trim().is_empty() => (
                         CredentialKind::PrivateKey,
@@ -1541,22 +1541,22 @@ impl OpsDeckApp {
                         }
                     }
                     // Key passphrase as a separate credential.
-                    if kind == CredentialKind::PrivateKey && !form.passphrase.is_empty() {
-                        if let Ok((nonce, ciphertext)) =
+                    if kind == CredentialKind::PrivateKey
+                        && !form.passphrase.is_empty()
+                        && let Ok((nonce, ciphertext)) =
                             encrypt_secret(v, form.passphrase.as_bytes())
-                        {
-                            let cred = Credential {
-                                id: uuid::Uuid::new_v4().to_string(),
-                                name: format!("{} key passphrase", form.name),
-                                kind: CredentialKind::Password.as_str().to_string(),
-                                ciphertext,
-                                nonce,
-                                created_at: now_unix(),
-                                updated_at: now_unix(),
-                            };
-                            if storage.credentials().upsert(&cred).await.is_ok() {
-                                passphrase_credential_id = Some(cred.id.clone());
-                            }
+                    {
+                        let cred = Credential {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            name: format!("{} key passphrase", form.name),
+                            kind: CredentialKind::Password.as_str().to_string(),
+                            ciphertext,
+                            nonce,
+                            created_at: now_unix(),
+                            updated_at: now_unix(),
+                        };
+                        if storage.credentials().upsert(&cred).await.is_ok() {
+                            passphrase_credential_id = Some(cred.id.clone());
                         }
                     }
                 }
@@ -1687,10 +1687,7 @@ impl OpsDeckApp {
                 .toast("Sync is off — pick a mode in Settings", true);
             return;
         }
-        let vault = {
-            let guard = self.vault.blocking_lock();
-            guard.clone()
-        };
+        let vault = self.vault.blocking_read().clone();
         let Some(vault) = vault else {
             self.state.toast("Vault is locked", true);
             return;
@@ -1724,9 +1721,10 @@ impl OpsDeckApp {
 }
 
 impl eframe::App for OpsDeckApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         self.activity = false;
-        self.drain_messages(ctx);
+        self.drain_messages(&ctx);
 
         // Periodic cache refresh (1s) or on demand.
         let stale = self
@@ -1841,9 +1839,9 @@ impl eframe::App for OpsDeckApp {
         };
 
         let mut events = Vec::new();
-        opsdeck_ui::render(ctx, &mut self.state, &data, &mut events);
+        opsdeck_ui::render(ui, &mut self.state, &data, &mut events);
         for event in events {
-            self.handle_event(ctx, event);
+            self.handle_event(&ctx, event);
         }
 
         // Keep repainting while there's live activity.

@@ -26,10 +26,8 @@ pub async fn run_on_hosts(
     command: &str,
     allow_dangerous: bool,
 ) -> Result<Vec<BatchResult>, OpsError> {
-    if !allow_dangerous {
-        if let Some(reason) = dangerous_reason(command) {
-            return Err(OpsError::Dangerous(reason));
-        }
+    if !allow_dangerous && let Some(reason) = dangerous_reason(command) {
+        return Err(OpsError::Dangerous(reason));
     }
 
     let mut handles = Vec::with_capacity(sessions.len());

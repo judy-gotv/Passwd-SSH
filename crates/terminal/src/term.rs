@@ -109,8 +109,10 @@ pub struct Terminal {
 impl Terminal {
     /// Create a terminal with the given size (in cells).
     pub fn new(cols: usize, rows: usize) -> Self {
-        let mut config = Config::default();
-        config.scrolling_history = 10_000;
+        let config = Config {
+            scrolling_history: 10_000,
+            ..Default::default()
+        };
         let dims = TermDimensions {
             cols: cols.max(1),
             rows: rows.max(1),
@@ -134,7 +136,7 @@ impl Terminal {
             cols: cols.max(1),
             rows: rows.max(1),
         };
-        self.term.resize(&dims);
+        self.term.resize(dims);
     }
 
     /// Scroll the viewport; positive = up (toward older history).

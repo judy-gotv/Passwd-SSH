@@ -79,32 +79,40 @@ impl Theme {
 
     /// Apply font sizes to the egui style.
     pub fn apply_text_sizes(&self, ctx: &egui::Context) {
-        let mut style = (*ctx.style()).clone();
-        let body = egui::FontId::new(self.font_size, egui::FontFamily::Proportional);
-        let mono = egui::FontId::new(self.font_size, egui::FontFamily::Monospace);
-        style
-            .text_styles
-            .insert(egui::TextStyle::Body, body.clone());
-        style
-            .text_styles
-            .insert(egui::TextStyle::Button, body.clone());
-        style.text_styles.insert(
-            egui::TextStyle::Heading,
-            egui::FontId::new(self.font_size + 4.0, egui::FontFamily::Proportional),
-        );
-        style.text_styles.insert(egui::TextStyle::Monospace, mono);
-        style.text_styles.insert(
-            egui::TextStyle::Small,
-            egui::FontId::new(
-                (self.font_size - 2.0).max(9.0),
-                egui::FontFamily::Proportional,
-            ),
-        );
-        ctx.set_style(style);
+        let theme = if self.dark {
+            egui::Theme::Dark
+        } else {
+            egui::Theme::Light
+        };
+        let font_size = self.font_size;
+        ctx.style_mut_of(theme, move |style| {
+            let body = egui::FontId::new(font_size, egui::FontFamily::Proportional);
+            let mono = egui::FontId::new(font_size, egui::FontFamily::Monospace);
+            style
+                .text_styles
+                .insert(egui::TextStyle::Body, body.clone());
+            style
+                .text_styles
+                .insert(egui::TextStyle::Button, body.clone());
+            style.text_styles.insert(
+                egui::TextStyle::Heading,
+                egui::FontId::new(font_size + 4.0, egui::FontFamily::Proportional),
+            );
+            style.text_styles.insert(egui::TextStyle::Monospace, mono);
+            style.text_styles.insert(
+                egui::TextStyle::Small,
+                egui::FontId::new((font_size - 2.0).max(9.0), egui::FontFamily::Proportional),
+            );
+        });
     }
 
     /// Apply the whole theme to a context.
     pub fn apply(&self, ctx: &egui::Context) {
+        ctx.set_theme(if self.dark {
+            egui::Theme::Dark
+        } else {
+            egui::Theme::Light
+        });
         ctx.set_visuals(self.egui_visuals());
         self.apply_text_sizes(ctx);
     }

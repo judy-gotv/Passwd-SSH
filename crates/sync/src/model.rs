@@ -31,7 +31,7 @@ impl SyncCollection {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "hosts" => Some(SyncCollection::Hosts),
             "host_groups" => Some(SyncCollection::HostGroups),
@@ -63,6 +63,7 @@ pub struct SyncRecord {
 
 impl SyncRecord {
     /// Encrypt an entity into a record.
+    #[allow(clippy::too_many_arguments)]
     pub fn seal<T: Serialize>(
         vault: &Vault,
         collection: SyncCollection,
@@ -119,7 +120,7 @@ pub enum SyncEntity {
 
 /// Decrypt a record into its typed entity.
 pub fn open_entity(vault: &Vault, record: &SyncRecord) -> Result<SyncEntity, SyncError> {
-    let collection = SyncCollection::from_str(&record.collection)
+    let collection = SyncCollection::parse(&record.collection)
         .ok_or_else(|| SyncError::Malformed(record.id.clone(), "unknown collection".into()))?;
     match collection {
         SyncCollection::Hosts => Ok(SyncEntity::Host(record.open(vault)?)),

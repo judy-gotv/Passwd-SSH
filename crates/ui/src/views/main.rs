@@ -4,18 +4,13 @@
 use crate::{MainTab, UiData, UiEvent, UiState};
 
 /// Top menu bar.
-pub fn top_bar(
-    ctx: &egui::Context,
-    state: &mut UiState,
-    _data: &UiData,
-    events: &mut Vec<UiEvent>,
-) {
-    egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+pub fn top_bar(ui: &mut egui::Ui, state: &mut UiState, events: &mut Vec<UiEvent>) {
+    egui::Panel::top("menu_bar").show(ui, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
                 if ui.button("New terminal tab    Ctrl+T").clicked() {
                     new_tab(state, events);
-                    ui.close_menu();
+                    ui.close();
                 }
                 if ui.button("Import hosts…").clicked() {
                     state.confirm = Some(crate::ConfirmDialog {
@@ -25,20 +20,20 @@ pub fn top_bar(
                         action: "import_hosts".to_string(),
                     });
                     state.import_buffer.clear();
-                    ui.close_menu();
+                    ui.close();
                 }
                 if ui.button("Export hosts…").clicked() {
                     events.push(UiEvent::ExportHosts);
-                    ui.close_menu();
+                    ui.close();
                 }
                 ui.separator();
                 if ui.button("🔒 Lock vault").clicked() {
                     events.push(UiEvent::LockVault);
-                    ui.close_menu();
+                    ui.close();
                 }
                 if ui.button("Quit").clicked() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    ui.close_menu();
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                    ui.close();
                 }
             });
 
@@ -52,7 +47,7 @@ pub fn top_bar(
                 ] {
                     if ui.selectable_label(state.main_tab == tab, label).clicked() {
                         state.main_tab = tab;
-                        ui.close_menu();
+                        ui.close();
                     }
                 }
                 ui.separator();
@@ -64,7 +59,7 @@ pub fn top_bar(
                         {
                             state.theme_name = name.to_string();
                             events.push(UiEvent::SetTheme(name.to_string()));
-                            ui.close_menu();
+                            ui.close();
                         }
                     }
                 });
@@ -73,33 +68,33 @@ pub fn top_bar(
             ui.menu_button("Session", |ui| {
                 if ui.button("Split left/right    Ctrl+Shift+E").clicked() {
                     events.push(UiEvent::SplitPane { vertical: false });
-                    ui.close_menu();
+                    ui.close();
                 }
                 if ui.button("Split up/down    Ctrl+Shift+O").clicked() {
                     events.push(UiEvent::SplitPane { vertical: true });
-                    ui.close_menu();
+                    ui.close();
                 }
                 ui.separator();
                 if ui.button("Port forwarding…").clicked() {
                     state.show_forward_dialog = true;
-                    ui.close_menu();
+                    ui.close();
                 }
                 if ui.button("Reconnect session").clicked() {
                     if let Some(pane) = state.active_pane().cloned() {
                         events.push(UiEvent::ReconnectSession(pane.session));
                     }
-                    ui.close_menu();
+                    ui.close();
                 }
             });
 
             ui.menu_button("Help", |ui| {
                 if ui.button("Keyboard shortcuts").clicked() {
                     state.main_tab = MainTab::Settings;
-                    ui.close_menu();
+                    ui.close();
                 }
                 if ui.button("Check for updates").clicked() {
                     events.push(UiEvent::CheckUpdate);
-                    ui.close_menu();
+                    ui.close();
                 }
             });
 
@@ -122,19 +117,19 @@ pub fn top_bar(
 }
 
 /// Central content dispatch.
-pub fn central(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+pub fn central(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
     match state.main_tab {
-        MainTab::Terminal => super::terminal::show(ctx, state, data, events),
-        MainTab::Files => super::sftp::show(ctx, state, data, events),
-        MainTab::Monitor => super::monitor::show(ctx, state, data, events),
-        MainTab::Snippets => super::snippets::show(ctx, state, data, events),
-        MainTab::Settings => super::settings::show(ctx, state, data, events),
+        MainTab::Terminal => super::terminal::show(ui, state, data, events),
+        MainTab::Files => super::sftp::show(ui, state, data, events),
+        MainTab::Monitor => super::monitor::show(ui, state, data, events),
+        MainTab::Snippets => super::snippets::show(ui, state, data, events),
+        MainTab::Settings => super::settings::show(ui, state, data, events),
     }
 }
 
 /// Bottom status bar.
-pub fn status_bar(ctx: &egui::Context, state: &mut UiState, data: &UiData) {
-    egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+pub fn status_bar(ui: &mut egui::Ui, state: &mut UiState, data: &UiData) {
+    egui::Panel::bottom("status_bar").show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.label(format!("{} session(s)", data.sessions.len()));
             if data.sessions.is_empty() {
@@ -200,15 +195,15 @@ pub fn global_shortcuts(ctx: &egui::Context, state: &mut UiState, events: &mut V
                     }
                     Key::F => {
                         // Terminal search (only meaningful on the terminal tab).
-                        if state.main_tab == MainTab::Terminal {
-                            if let Some(pane) = state.active_pane().cloned() {
-                                let open = !state
-                                    .search_open
-                                    .get(&pane.session)
-                                    .copied()
-                                    .unwrap_or(false);
-                                state.search_open.insert(pane.session, open);
-                            }
+                        if state.main_tab == MainTab::Terminal
+                            && let Some(pane) = state.active_pane().cloned()
+                        {
+                            let open = !state
+                                .search_open
+                                .get(&pane.session)
+                                .copied()
+                                .unwrap_or(false);
+                            state.search_open.insert(pane.session, open);
                         }
                     }
                     Key::Num1 => switch_tab(state, 0),

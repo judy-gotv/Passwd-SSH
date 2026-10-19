@@ -6,10 +6,10 @@ use egui::TextEdit;
 use crate::{Screen, UiData, UiEvent, UiState};
 
 /// Draw the lock screen.
-pub fn show(ctx: &egui::Context, state: &mut UiState, _data: &UiData, events: &mut Vec<UiEvent>) {
+pub fn show(ui: &mut egui::Ui, state: &mut UiState, _data: &UiData, events: &mut Vec<UiEvent>) {
     let first_run = matches!(state.screen, Screen::Locked { first_run: true });
 
-    egui::CentralPanel::default().show(ctx, |ui| {
+    egui::CentralPanel::default().show(ui, |ui| {
         ui.vertical_centered(|ui| {
             ui.add_space(90.0);
             ui.heading(egui::RichText::new("OpsDeck").size(36.0));
@@ -32,7 +32,7 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, _data: &UiData, events: &m
                     .hint_text("Confirm password")
                     .desired_width(width);
                 ui.add(confirm);
-                if resp.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+                if resp.lost_focus() && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter)) {
                     try_create(state, events);
                 }
                 ui.add_space(8.0);
@@ -51,7 +51,7 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, _data: &UiData, events: &m
                 if state.unlock_error.is_none() && state.password_input.is_empty() {
                     resp.request_focus();
                 }
-                if resp.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+                if resp.lost_focus() && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter)) {
                     try_unlock(state, events);
                 }
                 ui.add_space(8.0);

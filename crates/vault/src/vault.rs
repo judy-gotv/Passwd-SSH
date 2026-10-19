@@ -18,7 +18,6 @@ use chacha20poly1305::{
     aead::{Aead, Key, Nonce},
 };
 use rand::{RngCore, rngs::OsRng};
-use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
@@ -100,7 +99,7 @@ impl Vault {
         OsRng.fill_bytes(&mut salt);
 
         let kdf = KdfParams::default();
-        let key = derive_key(master.expose_secret().as_bytes(), &salt, &kdf)?;
+        let key = derive_key(master.expose().as_bytes(), &salt, &kdf)?;
         let vault = Self { key };
 
         let check = vault.encrypt(CHECK_PLAINTEXT)?;
@@ -113,11 +112,7 @@ impl Vault {
     /// Returns [`VaultError::WrongPassword`] when the password is incorrect
     /// (or the verifier is corrupt — indistinguishable by design).
     pub fn unlock(master: &SecretString, verifier: &VaultVerifier) -> Result<Self, VaultError> {
-        let key = derive_key(
-            master.expose_secret().as_bytes(),
-            &verifier.salt,
-            &verifier.kdf,
-        )?;
+        let key = derive_key(master.expose().as_bytes(), &verifier.salt, &verifier.kdf)?;
         let vault = Self { key };
         let check = vault
             .decrypt(&verifier.check)
@@ -133,9 +128,9 @@ impl Vault {
         let cipher = cipher_from_key(&self.key);
         let mut nonce_bytes = [0u8; NONCE_LEN];
         OsRng.fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::<ChaCha20Poly1305>::from_slice(&nonce_bytes);
+        let nonce = Nonce::<ChaCha20Poly1305>::try_from(&nonce_bytes[..]).expect("NONCE_LEN is 12");
         let ciphertext = cipher
-            .encrypt(nonce, plaintext)
+            .encrypt(&nonce, plaintext)
             .map_err(|_| VaultError::Encryption)?;
         Ok(EncryptedBlob {
             nonce: nonce_bytes,
@@ -146,9 +141,10 @@ impl Vault {
     /// Decrypt a blob. Fails when the blob was tampered with.
     pub fn decrypt(&self, blob: &EncryptedBlob) -> Result<Vec<u8>, VaultError> {
         let cipher = cipher_from_key(&self.key);
-        let nonce = Nonce::<ChaCha20Poly1305>::from_slice(&blob.nonce);
+        let nonce =
+            Nonce::<ChaCha20Poly1305>::try_from(&blob.nonce[..]).expect("stored nonce is 12 bytes");
         cipher
-            .decrypt(nonce, blob.ciphertext.as_slice())
+            .decrypt(&nonce, blob.ciphertext.as_slice())
             .map_err(|_| VaultError::InvalidBlob)
     }
 
@@ -185,8 +181,8 @@ fn derive_key(password: &[u8], salt: &[u8], kdf: &KdfParams) -> Result<[u8; KEY_
 }
 
 fn cipher_from_key(key: &[u8; KEY_LEN]) -> ChaCha20Poly1305 {
-    let key = Key::<ChaCha20Poly1305>::from_slice(key);
-    ChaCha20Poly1305::new(key)
+    let key = Key::<ChaCha20Poly1305>::try_from(&key[..]).expect("KEY_LEN is 32");
+    ChaCha20Poly1305::new(&key)
 }
 
 #[cfg(test)]
@@ -216,7 +212,10 @@ mod tests {
     #[test]
     fn wrong_password_rejected() {
         let (_vault, verifier) = test_vault();
-        let err = Vault::unlock(&SecretString::new("wrong password"), &verifier).unwrap_err();
+        let err = match Vault::unlock(&SecretString::new("wrong password"), &verifier) {
+            Ok(_) => panic!("unlock with wrong password should fail"),
+            Err(e) => e,
+        };
         assert!(matches!(err, VaultError::WrongPassword));
     }
 

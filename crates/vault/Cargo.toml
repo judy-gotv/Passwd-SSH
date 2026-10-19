@@ -14,7 +14,6 @@ description = "Master-password vault: Argon2id key derivation and ChaCha20-Poly1
 argon2.workspace = true
 chacha20poly1305.workspace = true
 rand.workspace = true
-secrecy.workspace = true
 zeroize.workspace = true
 thiserror.workspace = true
 serde.workspace = true

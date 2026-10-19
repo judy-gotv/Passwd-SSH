@@ -5,7 +5,7 @@
 //!
 //! Author: Passwd Word
 
-use russh::auth::Signer;
+use russh::Signer;
 use russh::keys::HashAlg;
 use russh::keys::agent::AgentIdentity;
 use russh::keys::agent::client::{AgentClient, AgentStream};
@@ -18,7 +18,7 @@ struct AgentSigner<'a, S: AgentStream> {
     identity: &'a AgentIdentity,
 }
 
-impl<S: AgentStream + Send> Signer for AgentSigner<'_, S> {
+impl<S: AgentStream + Send + Unpin> Signer for AgentSigner<'_, S> {
     type Error = SshError;
 
     async fn auth_sign(

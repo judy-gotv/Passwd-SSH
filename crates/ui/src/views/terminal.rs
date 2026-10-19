@@ -7,12 +7,12 @@ use opsdeck_ssh::SessionId;
 use opsdeck_terminal::input::{KeyMods, TermKey, ctrl_byte, key_to_bytes};
 
 use crate::theme::terminal_defaults;
-use crate::{MainTab, TermTab, UiData, UiEvent, UiState};
+use crate::{TermTab, UiData, UiEvent, UiState};
 
 /// Draw the terminal tab: tab bar + toolbar + panes.
-pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
     // Tab bar + toolbar
-    egui::TopBottomPanel::top("term_toolbar").show(ctx, |ui| {
+    egui::Panel::top("term_toolbar").show(ui, |ui| {
         ui.horizontal(|ui| {
             // Tabs
             for (i, tab) in state.tabs.iter().enumerate() {
@@ -67,7 +67,7 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
     });
 
     // Panes
-    egui::CentralPanel::default().show(ctx, |ui| {
+    egui::CentralPanel::default().show(ui, |ui| {
         if state.tabs.is_empty() {
             ui.centered_and_justified(|ui| {
                 ui.vertical_centered(|ui| {
@@ -91,15 +91,13 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
             .panes
             .get(state.tabs[tab_idx].active_pane)
             .cloned()
-        {
-            if state
+            && state
                 .search_open
                 .get(&pane.session)
                 .copied()
                 .unwrap_or(false)
-            {
-                search_bar(ctx, state, data, events, pane.session);
-            }
+        {
+            search_bar(ui, state, data, events, pane.session);
         }
 
         if vertical {
@@ -113,7 +111,7 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
                     let rect =
                         Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), h));
                     pane_widget(
-                        ui, ctx, state, data, events, tab_idx, pane_idx, session, &title, rect,
+                        ui, state, data, events, tab_idx, pane_idx, session, &title, rect,
                     );
                 }
             });
@@ -128,7 +126,7 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
                     let rect =
                         Rect::from_min_size(ui.cursor().min, Vec2::new(w, ui.available_height()));
                     pane_widget(
-                        ui, ctx, state, data, events, tab_idx, pane_idx, session, &title, rect,
+                        ui, state, data, events, tab_idx, pane_idx, session, &title, rect,
                     );
                     if pane_idx + 1 < pane_count {
                         ui.separator();
@@ -173,7 +171,7 @@ fn toggle_search(state: &mut UiState) {
 
 /// The floating search bar.
 fn search_bar(
-    ctx: &egui::Context,
+    ui: &mut egui::Ui,
     state: &mut UiState,
     data: &UiData,
     events: &mut Vec<UiEvent>,
@@ -181,9 +179,9 @@ fn search_bar(
 ) {
     let _ = events;
     let _ = data;
-    egui::Area::new(egui::Id::new(("term_search", session)))
+    egui::Area::new(egui::Id::unique(("term_search", session)))
         .anchor(Align2::RIGHT_TOP, Vec2::new(-12.0, 44.0))
-        .show(ctx, |ui| {
+        .show(ui.ctx(), |ui| {
             egui::Frame::NONE
                 .fill(Color32::from_rgb(30, 30, 30))
                 .stroke(Stroke::new(1.0, Color32::from_rgb(90, 90, 90)))
@@ -208,7 +206,8 @@ fn search_bar(
                             jump_hit(state, session, -1);
                         }
                         if ui.small_button("▼").clicked()
-                            || (resp.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter)))
+                            || (resp.lost_focus()
+                                && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter)))
                         {
                             jump_hit(state, session, 1);
                         }
@@ -256,7 +255,6 @@ fn jump_hit(state: &mut UiState, session: SessionId, dir: i32) {
 #[allow(clippy::too_many_arguments)]
 fn pane_widget(
     ui: &mut egui::Ui,
-    ctx: &egui::Context,
     state: &mut UiState,
     data: &UiData,
     events: &mut Vec<UiEvent>,
@@ -331,10 +329,10 @@ fn pane_widget(
         }
     } else if response.drag_stopped() {
         // Click without drag clears the selection.
-        if let Some(sel) = state.selections.get(&session) {
-            if sel.anchor == sel.head {
-                state.selections.remove(&session);
-            }
+        if let Some(sel) = state.selections.get(&session)
+            && sel.anchor == sel.head
+        {
+            state.selections.remove(&session);
         }
     }
 
@@ -467,11 +465,11 @@ fn pane_widget(
 
     // --- scroll ----------------------------------------------------------
     if response.hovered() {
-        let delta_y = ctx.input(|i| i.raw_scroll_delta.y + i.smooth_scroll_delta.y);
-        if delta_y != 0.0 {
-            if let Some(term) = state.terminals.get_mut(&session) {
-                term.scroll((delta_y / cell_h) as i32);
-            }
+        let delta_y = ui.ctx().input(|i| i.smooth_scroll_delta.y);
+        if delta_y != 0.0
+            && let Some(term) = state.terminals.get_mut(&session)
+        {
+            term.scroll((delta_y / cell_h) as i32);
         }
     }
 
@@ -481,7 +479,7 @@ fn pane_widget(
         let mut copy_now = false;
         let mut clear_search = false;
 
-        ctx.input(|i| {
+        ui.ctx().input(|i| {
             for ev in &i.events {
                 match ev {
                     egui::Event::Text(text) => {
@@ -501,7 +499,6 @@ fn pane_widget(
                         ..
                     } => {
                         handle_key(
-                            ctx,
                             state,
                             session,
                             *key,
@@ -519,7 +516,7 @@ fn pane_widget(
         });
 
         if copy_now {
-            copy_selection(ctx, state, session);
+            copy_selection(ui, state, session);
         }
         if clear_search {
             state.search_open.insert(session, false);
@@ -534,7 +531,6 @@ fn pane_widget(
 /// Returns `true` when the key was fully handled (nothing else to do).
 #[allow(clippy::too_many_arguments)]
 fn handle_key(
-    ctx: &egui::Context,
     state: &mut UiState,
     session: SessionId,
     key: egui::Key,
@@ -542,7 +538,7 @@ fn handle_key(
     out: &mut Vec<u8>,
     copy_now: &mut bool,
     clear_search: &mut bool,
-    events: &mut Vec<UiEvent>,
+    _events: &mut Vec<UiEvent>,
     data: &UiData,
 ) {
     use egui::Key;
@@ -584,20 +580,24 @@ fn handle_key(
     }
 
     // Ctrl+letter → control byte.
-    if modifiers.ctrl && !modifiers.alt && !modifiers.shift {
-        if let Some(b) = ctrl_letter(key) {
-            out.push(b);
-            return;
-        }
+    if modifiers.ctrl
+        && !modifiers.alt
+        && !modifiers.shift
+        && let Some(b) = ctrl_letter(key)
+    {
+        out.push(b);
+        return;
     }
 
     // Alt+letter → ESC + letter (meta).
-    if modifiers.alt && !modifiers.ctrl && !modifiers.mac_cmd {
-        if let Some(c) = key_letter(key) {
-            out.push(0x1b);
-            out.extend_from_slice(c.to_lowercase().to_string().as_bytes());
-            return;
-        }
+    if modifiers.alt
+        && !modifiers.ctrl
+        && !modifiers.mac_cmd
+        && let Some(c) = key_letter(key)
+    {
+        out.push(0x1b);
+        out.extend_from_slice(c.to_lowercase().to_string().as_bytes());
+        return;
     }
 
     // Special keys.
@@ -631,14 +631,12 @@ fn handle_key(
         }
         return;
     }
-    if modifiers.shift && key == Key::End {
-        if let Some(term) = state.terminals.get_mut(&session) {
-            term.scroll_to_bottom();
-        }
-        return;
+    if modifiers.shift
+        && key == Key::End
+        && let Some(term) = state.terminals.get_mut(&session)
+    {
+        term.scroll_to_bottom();
     }
-
-    let _ = ctx;
 }
 
 /// Keys reserved for global shortcuts (handled in views::main).
@@ -722,7 +720,7 @@ fn ctrl_letter(key: egui::Key) -> Option<u8> {
         Key::CloseBracket => b']',
         _ => return None,
     };
-    Some(ctrl_byte(c))
+    ctrl_byte(c as char)
 }
 
 fn key_letter(key: egui::Key) -> Option<char> {
@@ -759,7 +757,7 @@ fn key_letter(key: egui::Key) -> Option<char> {
 }
 
 /// Copy the current selection to the clipboard.
-fn copy_selection(ctx: &egui::Context, state: &mut UiState, session: SessionId) {
+fn copy_selection(ui: &mut egui::Ui, state: &mut UiState, session: SessionId) {
     let Some(sel) = state.selections.get(&session).copied() else {
         return;
     };
@@ -800,6 +798,6 @@ fn copy_selection(ctx: &egui::Context, state: &mut UiState, session: SessionId) 
         text.push_str(line_text.trim_end());
     }
     if !text.trim().is_empty() {
-        ctx.copy_text(text);
+        ui.ctx().copy_text(text);
     }
 }

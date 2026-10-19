@@ -108,7 +108,7 @@ impl TransferQueue {
     }
 
     /// Pause a running task (aborts the worker; partial data is kept).
-    pub async fn pause(&self, task_id: &str) -> Result<(), SshPauseOutcome> {
+    pub async fn pause(&self, task_id: &str) -> Result<SshPauseOutcome, SftpError> {
         self.abort_worker(task_id).await;
         let task = self.storage.transfers().get(task_id).await?;
         self.storage
@@ -174,6 +174,7 @@ impl TransferQueue {
 
     async fn spawn_worker(&self, task: TransferTask) {
         let id = task.id.clone();
+        let worker_key = id.clone();
         let engine = self.engine.clone();
         let storage = self.storage.clone();
         let event_tx = self.event_tx.clone();
@@ -191,7 +192,6 @@ impl TransferQueue {
             let fwd_storage = storage.clone();
             let fwd_events = event_tx.clone();
             let fwd_done = done_counter.clone();
-            let fwd_id = id.clone();
             let forwarder = tokio::spawn(async move {
                 while let Some(p) = prx.recv().await {
                     fwd_done.store(p.bytes_done, Ordering::Relaxed);
@@ -257,7 +257,7 @@ impl TransferQueue {
             workers.lock().await.remove(&id);
         });
 
-        self.workers.lock().await.insert(id, handle);
+        self.workers.lock().await.insert(worker_key, handle);
     }
 }
 

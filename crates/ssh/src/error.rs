@@ -52,7 +52,7 @@ pub enum SshError {
     #[error("ssh protocol error: {0}")]
     Russh(#[from] russh::Error),
 
-    /// Channel send failure (needed by the agent [`Signer`][russh::auth::Signer]).
+    /// Channel send failure (needed by the agent [`Signer`][russh::Signer]).
     #[error("ssh channel send error")]
     Send(#[from] russh::SendError),
 

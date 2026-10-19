@@ -5,8 +5,8 @@ use crate::theme::Theme;
 use crate::{UiData, UiEvent, UiState};
 
 /// Draw the Settings tab.
-pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
-    egui::CentralPanel::default().show(ctx, |ui| {
+pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+    egui::CentralPanel::default().show(ui, |ui| {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.label(egui::RichText::new("Appearance").strong());
             ui.horizontal(|ui| {
@@ -157,10 +157,10 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
                         egui::Color32::from_rgb(120, 220, 120),
                         format!("New version available: {}", data.update.latest.clone().unwrap_or_default()),
                     );
-                    if let Some(url) = data.update.url.clone() {
-                        if ui.button("Download").clicked() {
-                            events.push(UiEvent::OpenUrl(url));
-                        }
+                    if let Some(url) = data.update.url.clone()
+                        && ui.button("Download").clicked()
+                    {
+                        events.push(UiEvent::OpenUrl(url));
                     }
                 });
             } else if let Some(err) = &data.update.error {

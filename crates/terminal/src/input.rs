@@ -116,7 +116,7 @@ pub fn key_to_bytes(key: TermKey, mods: KeyMods) -> Vec<u8> {
 /// Returns `None` for characters without a control mapping.
 pub fn ctrl_byte(c: char) -> Option<u8> {
     let upper = c.to_ascii_uppercase();
-    if ('A'..='Z').contains(&upper) {
+    if upper.is_ascii_uppercase() {
         Some(upper as u8 - b'A' + 1)
     } else {
         match c {

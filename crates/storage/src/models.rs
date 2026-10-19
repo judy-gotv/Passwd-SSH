@@ -210,7 +210,7 @@ impl CredentialKind {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "password" => Some(CredentialKind::Password),
             "private_key" => Some(CredentialKind::PrivateKey),
@@ -237,7 +237,7 @@ pub struct Credential {
 
 impl Credential {
     pub fn kind_enum(&self) -> Option<CredentialKind> {
-        CredentialKind::from_str(&self.kind)
+        CredentialKind::parse(&self.kind)
     }
 }
 
@@ -308,7 +308,7 @@ impl TransferDirection {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "upload" => Some(TransferDirection::Upload),
             "download" => Some(TransferDirection::Download),
@@ -341,7 +341,7 @@ impl TransferStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "pending" => Some(TransferStatus::Pending),
             "running" => Some(TransferStatus::Running),
@@ -380,11 +380,11 @@ pub struct TransferTask {
 
 impl TransferTask {
     pub fn direction_enum(&self) -> Option<TransferDirection> {
-        TransferDirection::from_str(&self.direction)
+        TransferDirection::parse(&self.direction)
     }
 
     pub fn status_enum(&self) -> Option<TransferStatus> {
-        TransferStatus::from_str(&self.status)
+        TransferStatus::parse(&self.status)
     }
 
     /// Progress ratio in `[0.0, 1.0]`, if the total size is known.

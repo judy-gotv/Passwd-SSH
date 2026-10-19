@@ -1,7 +1,6 @@
 //! Secret-holding primitive types with memory zeroization.
 //! Author: Passwd Word
 
-use secrecy::{ExposeSecret, SecretBox};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use zeroize::Zeroize;
@@ -11,27 +10,27 @@ use zeroize::Zeroize;
 /// Use this for passwords, private keys and passphrases while they are
 /// in memory. Never log or `Debug`-print the contents.
 #[derive(Clone)]
-pub struct SecretBytes(SecretBox<[u8]>);
+pub struct SecretBytes(Box<[u8]>);
 
 impl SecretBytes {
     /// Copy bytes into a new secret container.
     pub fn new(bytes: impl AsRef<[u8]>) -> Self {
-        Self(SecretBox::new(bytes.as_ref().to_vec().into_boxed_slice()))
+        Self(bytes.as_ref().to_vec().into_boxed_slice())
     }
 
     /// Borrow the secret bytes.
     pub fn expose(&self) -> &[u8] {
-        self.0.expose_secret()
+        &self.0
     }
 
     /// Length of the secret in bytes (safe to reveal).
     pub fn len(&self) -> usize {
-        self.0.expose_secret().len()
+        self.0.len()
     }
 
     /// Whether the secret is empty.
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.0.is_empty()
     }
 }
 
@@ -43,14 +42,13 @@ impl fmt::Debug for SecretBytes {
 
 impl Drop for SecretBytes {
     fn drop(&mut self) {
-        // SecretBox already zeroizes; belt and suspenders for clarity.
-        self.0.expose_secret().iter_mut().for_each(|b| *b = 0);
+        self.0.zeroize();
     }
 }
 
 impl Zeroize for SecretBytes {
     fn zeroize(&mut self) {
-        self.0.expose_secret().zeroize();
+        self.0.zeroize();
     }
 }
 

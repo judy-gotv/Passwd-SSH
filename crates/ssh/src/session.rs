@@ -415,11 +415,12 @@ impl SessionManager {
     // -- dialing ------------------------------------------------------------
 
     fn russh_config() -> Arc<client::Config> {
-        let mut config = client::Config::default();
-        config.keepalive_interval = Some(Duration::from_secs(30));
-        config.keepalive_max = 3;
-        config.nodelay = true;
-        Arc::new(config)
+        Arc::new(client::Config {
+            keepalive_interval: Some(Duration::from_secs(30)),
+            keepalive_max: 3,
+            nodelay: true,
+            ..Default::default()
+        })
     }
 
     fn handler_for(&self, config: &HostConfig) -> SessionHandler {

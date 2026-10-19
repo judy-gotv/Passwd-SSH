@@ -6,8 +6,8 @@ use opsdeck_sftp::FileKind;
 use crate::{UiData, UiEvent, UiState};
 
 /// Draw the Files tab.
-pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
-    egui::CentralPanel::default().show(ctx, |ui| {
+pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+    egui::CentralPanel::default().show(ui, |ui| {
         // Host picker
         ui.horizontal(|ui| {
             ui.label("Host:");
@@ -37,11 +37,11 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
                         }
                     }
                 });
-            if ui.small_button("🔄").on_hover_text("Refresh").clicked() {
-                if let Some(host_id) = state.sftp_host.clone() {
-                    let path = state.sftp_path(&host_id);
-                    events.push(UiEvent::SftpNavigate { host_id, path });
-                }
+            if ui.small_button("🔄").on_hover_text("Refresh").clicked()
+                && let Some(host_id) = state.sftp_host.clone()
+            {
+                let path = state.sftp_path(&host_id);
+                events.push(UiEvent::SftpNavigate { host_id, path });
             }
         });
         ui.separator();
@@ -71,7 +71,7 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
             let mut path_edit = path.clone();
             let path_resp =
                 ui.add(egui::TextEdit::singleline(&mut path_edit).desired_width(f32::INFINITY));
-            if path_resp.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+            if path_resp.lost_focus() && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter)) {
                 state.sftp_paths.insert(host_id.clone(), path_edit.clone());
                 events.push(UiEvent::SftpNavigate {
                     host_id: host_id.clone(),
@@ -283,10 +283,10 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
                                         events.push(UiEvent::TransferPause(t.id.clone()));
                                     }
                                 }
-                                "paused" | "failed" => {
-                                    if ui.small_button("▶").on_hover_text("Retry").clicked() {
-                                        events.push(UiEvent::TransferRetry(t.id.clone()));
-                                    }
+                                "paused" | "failed"
+                                    if ui.small_button("▶").on_hover_text("Retry").clicked() =>
+                                {
+                                    events.push(UiEvent::TransferRetry(t.id.clone()));
                                 }
                                 _ => {}
                             }
@@ -313,7 +313,7 @@ fn status_text(t: &opsdeck_storage::models::TransferTask) -> String {
             "{} / {}",
             human_size(t.bytes_done as u64),
             t.bytes_total
-                .map(human_size)
+                .map(|b| human_size(b as u64))
                 .unwrap_or_else(|| "?".to_string())
         ),
         "paused" => "paused".to_string(),

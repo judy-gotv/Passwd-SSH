@@ -8,7 +8,7 @@ pub fn show(ctx: &egui::Context, state: &mut UiState) {
     if state.toasts.is_empty() {
         return;
     }
-    egui::Area::new(egui::Id::new("toasts"))
+    egui::Area::new(egui::Id::unique("toasts"))
         .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-12.0, -36.0))
         .show(ctx, |ui| {
             ui.vertical(|ui| {

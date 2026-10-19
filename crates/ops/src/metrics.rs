@@ -173,6 +173,7 @@ pub fn parse_ps(out: &str) -> Vec<ProcessInfo> {
 }
 
 /// Collects metric snapshots over an SSH session.
+#[derive(Clone)]
 pub struct MetricsCollector {
     ssh: Arc<SessionManager>,
 }

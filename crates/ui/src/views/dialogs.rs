@@ -294,7 +294,9 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
         } else {
             state.host_form.error = None;
             state.show_host_editor = false;
-            events.push(UiEvent::SaveHost(std::mem::take(&mut state.host_form)));
+            events.push(UiEvent::SaveHost(Box::new(std::mem::take(
+                &mut state.host_form,
+            ))));
             state.host_form = HostForm::blank();
         }
     }

@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use opsdeck_storage::Storage;
-use opsdeck_storage::models::{Host, HostGroup, Snippet, now_unix};
+use opsdeck_storage::models::now_unix;
 use opsdeck_vault::Vault;
 use serde::{Deserialize, Serialize};
 
@@ -316,7 +316,7 @@ async fn export_all(
         let Some((collection, entity_id)) = record_id.split_once(':') else {
             continue;
         };
-        let Some(collection) = SyncCollection::from_str(collection) else {
+        let Some(collection) = SyncCollection::parse(collection) else {
             continue;
         };
         let now = now_unix();
@@ -395,7 +395,7 @@ async fn apply_records(
         // Conflict detection: local changed since the manifest *and* remote is newer.
         let local_changed = local_updated_at(storage, &record.collection, &record.entity_id)
             .await
-            .map(|t| t > entry.updated_at)
+            .map(|t| t.map(|v| v > entry.updated_at).unwrap_or(false))
             .unwrap_or(false);
         let local_stub = SyncRecord {
             version: entry.version,
@@ -684,8 +684,10 @@ mod tests {
         assert_eq!(hosts_b[0].name, "web-1");
 
         // B renames; A syncs again → last-write-wins applies on A.
+        // Sleep so B's edit lands in a strictly newer second than A's original
+        // (updated_at has second granularity; update() stamps now_unix()).
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
         host.name = "web-1-renamed".to_string();
-        host.updated_at = now_unix() + 100;
         storage_b.hosts().update(&host).await.unwrap();
         let summary_b2 = engine_b.sync(&vault_a).await.unwrap();
         assert_eq!(summary_b2.pushed, 1);

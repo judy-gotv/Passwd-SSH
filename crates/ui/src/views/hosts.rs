@@ -7,16 +7,15 @@ use crate::{HostForm, MainTab, UiData, UiEvent, UiState};
 
 /// Draw the left host panel.
 pub fn left_panel(
-    ctx: &egui::Context,
+    ui: &mut egui::Ui,
     state: &mut UiState,
     data: &UiData,
     events: &mut Vec<UiEvent>,
 ) {
-    egui::SidePanel::left("host_panel")
-        .default_width(264.0)
-        .min_width(200.0)
-        .max_width(420.0)
-        .show(ctx, |ui| {
+    egui::Panel::left("host_panel")
+        .default_size(264.0)
+        .size_range(200.0..=420.0)
+        .show(ui, |ui| {
             // Search
             ui.horizontal(|ui| {
                 let resp = ui.add(

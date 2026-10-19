@@ -137,6 +137,11 @@ impl ProgressThrottle {
     }
 }
 
+/// Render one permission bit as `rwx`/`-`.
+fn flag(set: bool, ch: char) -> char {
+    if set { ch } else { '-' }
+}
+
 fn to_file_entry(
     name: String,
     path: String,
@@ -169,13 +174,25 @@ impl SftpEngine for RusshSftpEngine {
         let mut entries = Vec::new();
         for dir_entry in sftp.read_dir(path).await? {
             let meta = dir_entry.metadata();
+            let perms = meta.permissions();
             entries.push(to_file_entry(
                 dir_entry.file_name(),
                 dir_entry.path(),
                 meta.file_type(),
                 meta.len(),
                 meta.modified().ok(),
-                format!("{:?}", meta.permissions()),
+                format!(
+                    "{}{}{}{}{}{}{}{}{}",
+                    flag(perms.owner_read, 'r'),
+                    flag(perms.owner_write, 'w'),
+                    flag(perms.owner_exec, 'x'),
+                    flag(perms.group_read, 'r'),
+                    flag(perms.group_write, 'w'),
+                    flag(perms.group_exec, 'x'),
+                    flag(perms.other_read, 'r'),
+                    flag(perms.other_write, 'w'),
+                    flag(perms.other_exec, 'x'),
+                ),
             ));
         }
         sort_entries(&mut entries);
@@ -309,5 +326,5 @@ impl SftpEngine for RusshSftpEngine {
 
 /// Convenience: direction of a [`TransferTask`] or `None` when malformed.
 pub fn task_direction(task: &TransferTask) -> Option<TransferDirection> {
-    TransferDirection::from_str(&task.direction)
+    TransferDirection::parse(&task.direction)
 }

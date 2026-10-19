@@ -6,8 +6,8 @@ use egui::{Color32, Pos2, Stroke, Vec2};
 use crate::{UiData, UiEvent, UiState};
 
 /// Draw the Monitor tab.
-pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
-    egui::CentralPanel::default().show(ctx, |ui| {
+pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+    egui::CentralPanel::default().show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.label("Host:");
             let current = state

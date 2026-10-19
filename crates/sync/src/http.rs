@@ -12,6 +12,10 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::error::SyncError;
 
+/// A stream that can be both read and written (plain TCP or TLS).
+trait AsyncReadWrite: AsyncRead + AsyncWrite + Unpin + Send {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send> AsyncReadWrite for T {}
+
 /// An HTTP response.
 #[derive(Debug)]
 pub struct HttpResponse {
@@ -78,9 +82,9 @@ fn parse_url(url: &str) -> Result<ParsedUrl, SyncError> {
 fn tls_connector() -> Result<tokio_rustls::TlsConnector, SyncError> {
     let mut roots = rustls::RootCertStore::empty();
     // Prefer the OS trust store; fall back to the bundled Mozilla roots.
-    let native = rustls_native_certs::load_native_certs().unwrap_or_default();
+    let native = rustls_native_certs::load_native_certs();
     let mut loaded = false;
-    for cert in native {
+    for cert in native.certs {
         if roots.add(cert).is_ok() {
             loaded = true;
         }
@@ -114,7 +118,7 @@ pub async fn http_request(
     .map_err(|e| SyncError::Remote(format!("connect {}:{}: {e}", u.host, u.port)))?;
     tcp.set_nodelay(true).ok();
 
-    let mut stream: Box<dyn AsyncRead + AsyncWrite + Unpin + Send> = if u.https {
+    let mut stream: Box<dyn AsyncReadWrite> = if u.https {
         let name = rustls::pki_types::ServerName::try_from(u.host.as_str())
             .map_err(|_| SyncError::Remote(format!("invalid dns name: {}", u.host)))?
             .to_owned();
@@ -159,9 +163,7 @@ pub async fn http_request(
     read_response(&mut stream).await
 }
 
-async fn read_response(
-    stream: &mut (dyn AsyncRead + AsyncWrite + Unpin + Send),
-) -> Result<HttpResponse, SyncError> {
+async fn read_response(stream: &mut dyn AsyncReadWrite) -> Result<HttpResponse, SyncError> {
     let mut buf = Vec::with_capacity(8192);
     let mut tmp = [0u8; 8192];
     let header_end = loop {
@@ -245,7 +247,7 @@ async fn read_response(
 }
 
 async fn read_chunked(
-    stream: &mut (dyn AsyncRead + AsyncWrite + Unpin + Send),
+    stream: &mut dyn AsyncReadWrite,
     mut buf: Vec<u8>,
 ) -> Result<Vec<u8>, SyncError> {
     let mut out = Vec::new();

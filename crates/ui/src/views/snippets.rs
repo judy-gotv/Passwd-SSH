@@ -4,8 +4,8 @@
 use crate::{SnippetForm, UiData, UiEvent, UiState};
 
 /// Draw the Snippets tab.
-pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
-    egui::CentralPanel::default().show(ctx, |ui| {
+pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+    egui::CentralPanel::default().show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.label("Snippets");
             ui.add(
@@ -33,10 +33,10 @@ pub fn show(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mu
                     ui.vertical(|ui| {
                         ui.label(egui::RichText::new(&snippet.title).strong());
                         ui.label(egui::RichText::new(&snippet.command).monospace().small());
-                        if let Some(desc) = &snippet.description {
-                            if !desc.is_empty() {
-                                ui.label(egui::RichText::new(desc).small().weak());
-                            }
+                        if let Some(desc) = &snippet.description
+                            && !desc.is_empty()
+                        {
+                            ui.label(egui::RichText::new(desc).small().weak());
                         }
                     });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

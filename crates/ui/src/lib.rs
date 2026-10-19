@@ -41,7 +41,7 @@ pub enum UiEvent {
     ConnectHost(String),
     DisconnectSession(SessionId),
     ReconnectSession(SessionId),
-    SaveHost(HostForm),
+    SaveHost(Box<HostForm>),
     DeleteHost(String),
     ToggleFavorite(String),
     ImportHosts(String),
@@ -211,28 +211,32 @@ impl<'a> UiData<'a> {
 }
 
 /// Draw one frame.
-pub fn render(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+pub fn render(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+    let ctx = ui.ctx().clone();
     // Apply theme on change.
     if state.applied_theme != state.theme_name {
-        data.theme.apply(ctx);
+        data.theme.apply(&ctx);
         state.applied_theme = state.theme_name.clone();
     }
     state.prune_toasts();
 
     match state.screen {
-        Screen::Locked { .. } => views::vault::show(ctx, state, data, events),
+        Screen::Locked { .. } => {
+            views::vault::show(ui, state, data, events);
+        }
         Screen::Main => {
-            views::main::top_bar(ctx, state, data, events);
-            views::hosts::left_panel(ctx, state, data, events);
-            views::main::central(ctx, state, data, events);
-            views::main::status_bar(ctx, state, data);
-            views::dialogs::show_all(ctx, state, data, events);
-            views::toasts::show(ctx, state);
+            // All panels share the root Ui so they tile correctly.
+            views::main::top_bar(ui, state, events);
+            views::hosts::left_panel(ui, state, data, events);
+            views::main::central(ui, state, data, events);
+            views::main::status_bar(ui, state, data);
+            views::dialogs::show_all(&ctx, state, data, events);
+            views::toasts::show(&ctx, state);
         }
     }
 
     // Global shortcuts (main screen only).
     if matches!(state.screen, Screen::Main) {
-        views::main::global_shortcuts(ctx, state, events);
+        views::main::global_shortcuts(&ctx, state, events);
     }
 }
