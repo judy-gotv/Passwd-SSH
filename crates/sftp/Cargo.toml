@@ -1,0 +1,22 @@
+# OpsDeck SFTP crate — remote file management over russh-sftp.
+# Author: Passwd Word
+
+[package]
+name = "opsdeck-sftp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "SFTP engine for OpsDeck: browsing, transfer queue with resume, progress"
+
+[dependencies]
+russh-sftp.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde.workspace = true
+uuid.workspace = true
+opsdeck-ssh = { path = "../ssh" }
+opsdeck-storage = { path = "../storage" }

@@ -1,0 +1,57 @@
+# OpsDeck — Rust SSH Workstation
+# Author: Passwd Word
+# Repository: https://github.com/judy-gotv/Passwd-SSH
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/app",
+    "crates/ui",
+    "crates/terminal",
+    "crates/ssh",
+    "crates/sftp",
+    "crates/ops",
+    "crates/vault",
+    "crates/storage",
+    "crates/sync",
+]
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+version = "0.1.0"
+authors = ["Passwd Word"]
+repository = "https://github.com/judy-gotv/Passwd-SSH"
+homepage = "https://github.com/judy-gotv/Passwd-SSH"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+eframe = "0.37"
+egui = "0.37"
+alacritty_terminal = "0.26"
+russh = "0.64"
+russh-sftp = "3"
+sqlx = { version = "0.9", features = ["sqlite", "runtime-tokio", "migrate"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+argon2 = "0.6"
+chacha20poly1305 = "0.11"
+rand = "0.8"
+async-trait = "0.1"
+secrecy = "0.10"
+zeroize = "1"
+directories = "6"
+tokio-rustls = "0.26"
+rustls = "0.23"
+webpki-roots = "1"
+rustls-native-certs = "0.8"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true

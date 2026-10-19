@@ -1,0 +1,28 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# eframe / egui runtime data is stored in OS dirs, nothing local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Packaging artifacts
+/dist/
+*.msi
+*.dmg
+*.deb
+*.AppImage
+*.zip
+*.tar.gz
+
+# Local dev overrides
+.env

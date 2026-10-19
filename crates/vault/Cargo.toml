@@ -1,0 +1,22 @@
+# OpsDeck Vault crate — local encrypted credential store primitives.
+# Author: Passwd Word
+
+[package]
+name = "opsdeck-vault"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Master-password vault: Argon2id key derivation and ChaCha20-Poly1305 encryption for OpsDeck"
+
+[dependencies]
+argon2.workspace = true
+chacha20poly1305.workspace = true
+rand.workspace = true
+secrecy.workspace = true
+zeroize.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+
+[dev-dependencies]

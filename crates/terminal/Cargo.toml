@@ -1,0 +1,17 @@
+# OpsDeck Terminal crate — VT/xterm emulation state over alacritty_terminal.
+# Author: Passwd Word
+
+[package]
+name = "opsdeck-terminal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Terminal emulation for OpsDeck: alacritty_terminal wrapper, input mapping, render model, search"
+
+[dependencies]
+alacritty_terminal.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+serde.workspace = true

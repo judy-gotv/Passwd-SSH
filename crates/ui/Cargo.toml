@@ -1,0 +1,22 @@
+# OpsDeck UI crate — egui views (no direct DB access; see docs §12.1).
+# Author: Passwd Word
+
+[package]
+name = "opsdeck-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "egui user interface for OpsDeck: hosts, terminal, SFTP, monitor, snippets, settings"
+
+[dependencies]
+egui.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+opsdeck-terminal = { path = "../terminal" }
+opsdeck-ssh = { path = "../ssh" }
+opsdeck-storage = { path = "../storage" }
+opsdeck-ops = { path = "../ops" }
+opsdeck-sync = { path = "../sync" }

@@ -1,0 +1,25 @@
+# OpsDeck SSH crate — russh-based SSH engine: sessions, auth, channels, forwarding.
+# Author: Passwd Word
+
+[package]
+name = "opsdeck-ssh"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "SSH engine for OpsDeck: session management, password/key/agent auth, shells, exec, port forwarding"
+
+[dependencies]
+russh.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+secrecy.workspace = true
+zeroize.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+opsdeck-vault = { path = "../vault" }
+opsdeck-storage = { path = "../storage" }

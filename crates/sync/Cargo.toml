@@ -1,0 +1,24 @@
+# OpsDeck Sync crate — encrypted cloud sync framework.
+# Author: Passwd Word
+
+[package]
+name = "opsdeck-sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Encrypted sync for OpsDeck: versioned records, conflict resolution, pluggable remotes"
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+opsdeck-vault = { path = "../vault" }
+opsdeck-storage = { path = "../storage" }
+tokio-rustls.workspace = true
+rustls.workspace = true
+webpki-roots.workspace = true
+rustls-native-certs.workspace = true

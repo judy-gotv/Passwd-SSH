@@ -1,0 +1,20 @@
+# OpsDeck Storage crate — SQLite persistence layer.
+# Author: Passwd Word
+
+[package]
+name = "opsdeck-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "SQLite storage layer (hosts, credentials, groups, snippets, transfers, metrics) for OpsDeck"
+
+[dependencies]
+sqlx.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
