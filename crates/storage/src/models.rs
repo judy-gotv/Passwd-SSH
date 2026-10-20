@@ -518,6 +518,17 @@ pub struct MetricSnapshot {
     pub load_15: Option<f64>,
     pub network_rx_bytes: Option<i64>,
     pub network_tx_bytes: Option<i64>,
+    /// Buff/cache bytes from `free -b` (dashboard memory legend).
+    #[serde(default)]
+    pub memory_cached_bytes: Option<i64>,
+    /// Cumulative disk sectors read/written (bytes) for rate deltas.
+    #[serde(default)]
+    pub disk_read_bytes: Option<i64>,
+    #[serde(default)]
+    pub disk_write_bytes: Option<i64>,
+    /// Per-core busy percentages (dashboard core strip).
+    #[serde(default)]
+    pub cpu_per_core: Vec<f64>,
 }
 
 impl MetricSnapshot {

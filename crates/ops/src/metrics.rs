@@ -41,8 +41,10 @@ pub mod commands {
     /// Two samples with a 1s gap so CPU % can be derived from deltas.
     pub const CPU_STAT: &str = "cat /proc/stat; sleep 1; cat /proc/stat";
     pub const NET_DEV: &str = "cat /proc/net/dev";
-    pub const TOP_PROCS: &str = "ps -eo pid,comm,%cpu,%mem --sort=-%cpu | head -n 11";
-    pub const SYSINFO: &str = "grep PRETTY_NAME= /etc/os-release 2>/dev/null | head -1; uname -srm; cat /proc/uptime; nproc 2>/dev/null | sed 's/^/NPROC=/'";
+    pub const TOP_PROCS: &str = "ps -eo pid,args,%cpu,%mem --sort=-%cpu | head -n 11";
+    pub const SYSINFO: &str = "grep PRETTY_NAME= /etc/os-release 2>/dev/null | head -1; uname -srm; cat /proc/uptime; nproc 2>/dev/null | sed 's/^/NPROC=/'; date +'TZ=%Z %z'";
+    pub const MOUNTS: &str = "df -B1 -T -x tmpfs -x devtmpfs -x overlay -x squashfs";
+    pub const DISKSTATS: &str = "cat /proc/diskstats";
 }
 
 /// Static host facts for the monitoring dashboard (fetched once per session).
@@ -55,6 +57,20 @@ pub struct SysInfo {
     pub uptime_secs: u64,
     /// Logical CPU cores (`nproc`), when reported.
     pub cpu_cores: Option<u32>,
+    /// Preformatted timezone, e.g. "GMT+0800 CST".
+    pub timezone: Option<String>,
+    /// Filesystem mounts (df -T), root first when present.
+    pub mounts: Vec<MountInfo>,
+}
+
+/// One filesystem mount from `df -B1 -T`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MountInfo {
+    pub mount: String,
+    pub fstype: String,
+    pub total: u64,
+    pub used: u64,
+    pub avail: u64,
 }
 
 /// Parse the SYSINFO output: an optional PRETTY_NAME line, the
@@ -64,9 +80,16 @@ pub fn parse_sysinfo(out: &str) -> Result<SysInfo, OpsError> {
     let mut kernel = String::new();
     let mut uptime_secs = 0u64;
     let mut cpu_cores = None;
+    let mut timezone = None;
     for line in out.lines() {
         let line = line.trim();
-        if let Some(v) = line.strip_prefix("NPROC=") {
+        if let Some(v) = line.strip_prefix("TZ=") {
+            // "CST +0800" → "GMT+0800 CST"
+            let mut parts = v.split_whitespace();
+            if let (Some(abbr), Some(off)) = (parts.next(), parts.next()) {
+                timezone = Some(format!("GMT{off} {abbr}"));
+            }
+        } else if let Some(v) = line.strip_prefix("NPROC=") {
             cpu_cores = v.trim().parse::<u32>().ok().filter(|n| *n > 0);
         } else if let Some(v) = line.strip_prefix("PRETTY_NAME=") {
             os_name = v.trim_matches('"').to_string();
@@ -94,6 +117,8 @@ pub fn parse_sysinfo(out: &str) -> Result<SysInfo, OpsError> {
         kernel,
         uptime_secs,
         cpu_cores,
+        timezone,
+        mounts: Vec::new(),
     })
 }
 
@@ -110,8 +135,8 @@ pub fn parse_loadavg(out: &str) -> Result<(f64, f64, f64), OpsError> {
     Ok((p(parts[0])?, p(parts[1])?, p(parts[2])?))
 }
 
-/// Parse `free -b` → (used_bytes, total_bytes).
-pub fn parse_free_b(out: &str) -> Result<(u64, u64), OpsError> {
+/// Parse `free -b` → (used_bytes, total_bytes, cached_bytes).
+pub fn parse_free_b(out: &str) -> Result<(u64, u64, u64), OpsError> {
     for line in out.lines() {
         let line = line.trim_start();
         if let Some(rest) = line.strip_prefix("Mem:") {
@@ -125,10 +150,122 @@ pub fn parse_free_b(out: &str) -> Result<(u64, u64), OpsError> {
             let used = f[1]
                 .parse::<u64>()
                 .map_err(|_| OpsError::Parse("bad mem used".into()))?;
-            return Ok((used, total));
+            let cached = f.get(4).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+            return Ok((used, total, cached));
         }
     }
     Err(OpsError::Parse("no Mem: line in free output".into()))
+}
+
+/// Parse `df -B1 -T` (all mounts) → mount table, pseudo filesystems and
+/// duplicate mount points dropped.
+pub fn parse_mounts(out: &str) -> Vec<MountInfo> {
+    const PSEUDO: [&str; 10] = [
+        "proc",
+        "sysfs",
+        "devpts",
+        "cgroup",
+        "cgroup2",
+        "mqueue",
+        "autofs",
+        "pstore",
+        "securityfs",
+        "debugfs",
+    ];
+    let mut mounts: Vec<MountInfo> = Vec::new();
+    for line in out.lines().skip(1) {
+        let f: Vec<&str> = line.split_whitespace().collect();
+        if f.len() < 7 || PSEUDO.contains(&f[1]) {
+            continue;
+        }
+        let (Ok(total), Ok(used), Ok(avail)) = (
+            f[2].parse::<u64>(),
+            f[3].parse::<u64>(),
+            f[4].parse::<u64>(),
+        ) else {
+            continue;
+        };
+        let mount = f[6..].join(" ");
+        if mounts.iter().any(|m| m.mount == mount) {
+            continue;
+        }
+        mounts.push(MountInfo {
+            mount,
+            fstype: f[1].to_string(),
+            total,
+            used,
+            avail,
+        });
+    }
+    mounts.sort_by_key(|m| m.mount != "/");
+    mounts
+}
+
+/// Parse `/proc/diskstats` → (read_bytes, write_bytes) summed over whole
+/// disks (partitions, loop and ram devices excluded).
+pub fn parse_diskstats(out: &str) -> (u64, u64) {
+    fn whole_disk(name: &str) -> bool {
+        if let Some(rest) = name
+            .strip_prefix("sd")
+            .or_else(|| name.strip_prefix("hd"))
+            .or_else(|| name.strip_prefix("vd"))
+            .or_else(|| name.strip_prefix("xvd"))
+        {
+            return rest.len() == 1 && rest.chars().all(|ch| ch.is_ascii_alphabetic());
+        }
+        if let Some(rest) = name.strip_prefix("nvme") {
+            // nvme0n1 (whole) vs nvme0n1p1 (partition)
+            return !rest.contains('p') && rest.contains('n');
+        }
+        if let Some(rest) = name.strip_prefix("mmcblk") {
+            return rest.chars().all(|ch| ch.is_ascii_digit());
+        }
+        false
+    }
+    let (mut rd, mut wr) = (0u64, 0u64);
+    for line in out.lines() {
+        let f: Vec<&str> = line.split_whitespace().collect();
+        if f.len() < 10 || !whole_disk(f[2]) {
+            continue;
+        }
+        rd += f[5].parse::<u64>().unwrap_or(0) * 512;
+        wr += f[9].parse::<u64>().unwrap_or(0) * 512;
+    }
+    (rd, wr)
+}
+
+/// Per-core busy percentages from the two `/proc/stat` samples.
+pub fn parse_cpu_per_core(out: &str) -> Vec<f64> {
+    fn core_line(line: &str) -> Option<(u64, u64)> {
+        let f: Vec<&str> = line.split_whitespace().collect();
+        let name = f.first()?;
+        if !name.starts_with("cpu") || name.len() <= 3 || f.len() < 8 {
+            return None;
+        }
+        let nums: Vec<u64> = f[1..8].iter().filter_map(|s| s.parse().ok()).collect();
+        if nums.len() < 7 {
+            return None;
+        }
+        let idle = nums[3] + nums[4];
+        Some((nums.iter().sum(), idle))
+    }
+    let samples: Vec<(u64, u64)> = out.lines().filter_map(core_line).collect();
+    let half = samples.len() / 2;
+    if half == 0 {
+        return Vec::new();
+    }
+    (0..half)
+        .map(|i| {
+            let (t1, i1) = samples[i];
+            let (t2, i2) = samples[i + half];
+            let dt = t2.saturating_sub(t1);
+            if dt == 0 {
+                0.0
+            } else {
+                (1.0 - i2.saturating_sub(i1) as f64 / dt as f64) * 100.0
+            }
+        })
+        .collect()
 }
 
 /// Parse `df -B1` → (used_bytes, total_bytes) for the first data row.
@@ -200,7 +337,8 @@ pub fn parse_net_dev(out: &str) -> (u64, u64) {
     (rx, tx)
 }
 
-/// Parse `ps -eo pid,comm,%cpu,%mem` → top processes (header skipped).
+/// Parse `ps -eo pid,args,%cpu,%mem` → top processes (header skipped).
+/// The command line is everything between the pid and the two % columns.
 pub fn parse_ps(out: &str) -> Vec<ProcessInfo> {
     let mut procs = Vec::new();
     for line in out.lines().skip(1) {
@@ -208,16 +346,17 @@ pub fn parse_ps(out: &str) -> Vec<ProcessInfo> {
         if f.len() < 4 {
             continue;
         }
+        let n = f.len();
         let (Ok(pid), Ok(cpu), Ok(mem)) = (
             f[0].parse::<u32>(),
-            f[2].parse::<f32>(),
-            f[3].parse::<f32>(),
+            f[n - 2].parse::<f32>(),
+            f[n - 1].parse::<f32>(),
         ) else {
             continue;
         };
         procs.push(ProcessInfo {
             pid,
-            name: f[1].to_string(),
+            name: f[1..n - 2].join(" "),
             cpu_percent: cpu,
             mem_percent: mem,
         });
@@ -245,12 +384,13 @@ impl MetricsCollector {
         host_id: &str,
     ) -> Result<MetricSnapshot, OpsError> {
         let timeout = Duration::from_secs(15);
-        let (load, mem, disk, cpu, net) = tokio::join!(
+        let (load, mem, disk, cpu, net, diskio) = tokio::join!(
             self.ssh.exec_timeout(session, commands::LOADAVG, timeout),
             self.ssh.exec_timeout(session, commands::MEMORY, timeout),
             self.ssh.exec_timeout(session, commands::DISK, timeout),
             self.ssh.exec_timeout(session, commands::CPU_STAT, timeout),
             self.ssh.exec_timeout(session, commands::NET_DEV, timeout),
+            self.ssh.exec_timeout(session, commands::DISKSTATS, timeout),
         );
 
         let (load_1, load_5, load_15) = load
@@ -258,17 +398,27 @@ impl MetricsCollector {
             .and_then(|o| parse_loadavg(&o.stdout).ok())
             .map(|(a, b, c)| (Some(a), Some(b), Some(c)))
             .unwrap_or((None, None, None));
-        let (memory_used_bytes, memory_total_bytes) = mem
+        let (memory_used_bytes, memory_total_bytes, memory_cached_bytes) = mem
             .ok()
             .and_then(|o| parse_free_b(&o.stdout).ok())
-            .map(|(u, t)| (Some(u as i64), Some(t as i64)))
-            .unwrap_or((None, None));
+            .map(|(u, t, c)| (Some(u as i64), Some(t as i64), Some(c as i64)))
+            .unwrap_or((None, None, None));
         let (disk_used_bytes, disk_total_bytes) = disk
             .ok()
             .and_then(|o| parse_df_b1(&o.stdout).ok())
             .map(|(u, t)| (Some(u as i64), Some(t as i64)))
             .unwrap_or((None, None));
-        let cpu_percent = cpu.ok().and_then(|o| parse_cpu_stat(&o.stdout).ok());
+        let cpu_out = cpu.ok().map(|o| o.stdout);
+        let cpu_percent = cpu_out.as_deref().and_then(|s| parse_cpu_stat(s).ok());
+        let cpu_per_core = cpu_out
+            .as_deref()
+            .map(parse_cpu_per_core)
+            .unwrap_or_default();
+        let (disk_read_bytes, disk_write_bytes) = diskio
+            .ok()
+            .map(|o| parse_diskstats(&o.stdout))
+            .map(|(r, w)| (Some(r as i64), Some(w as i64)))
+            .unwrap_or((None, None));
         let (network_rx_bytes, network_tx_bytes) = net
             .ok()
             .map(|o| parse_net_dev(&o.stdout))
@@ -289,6 +439,10 @@ impl MetricsCollector {
             load_15,
             network_rx_bytes,
             network_tx_bytes,
+            memory_cached_bytes,
+            disk_read_bytes,
+            disk_write_bytes,
+            cpu_per_core,
         })
     }
 
@@ -298,7 +452,15 @@ impl MetricsCollector {
             .ssh
             .exec_timeout(session, commands::SYSINFO, Duration::from_secs(15))
             .await?;
-        parse_sysinfo(&out.stdout)
+        let mut info = parse_sysinfo(&out.stdout)?;
+        if let Ok(m) = self
+            .ssh
+            .exec_timeout(session, commands::MOUNTS, Duration::from_secs(15))
+            .await
+        {
+            info.mounts = parse_mounts(&m.stdout);
+        }
+        Ok(info)
     }
 
     /// Fetch the top-process table.
@@ -339,7 +501,7 @@ mod tests {
     #[test]
     fn free_parses() {
         let out = "               total        used        free      shared  buff/cache   available\nMem:       4024548      512000     1234567       12345     2277981     3512345\nSwap:        2097148           0     2097148\n";
-        assert_eq!(parse_free_b(out).unwrap(), (512000, 4024548));
+        assert_eq!(parse_free_b(out).unwrap(), (512000, 4024548, 2277981));
     }
 
     #[test]

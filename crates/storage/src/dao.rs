@@ -113,6 +113,15 @@ fn map_metric(row: &sqlx::sqlite::SqliteRow) -> Result<MetricSnapshot, sqlx::Err
         load_15: row.try_get("load_15")?,
         network_rx_bytes: row.try_get("network_rx_bytes")?,
         network_tx_bytes: row.try_get("network_tx_bytes")?,
+        memory_cached_bytes: row.try_get("memory_cached_bytes").unwrap_or(None),
+        disk_read_bytes: row.try_get("disk_read_bytes").unwrap_or(None),
+        disk_write_bytes: row.try_get("disk_write_bytes").unwrap_or(None),
+        cpu_per_core: row
+            .try_get::<Option<String>, _>("cpu_per_core")
+            .ok()
+            .flatten()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default(),
     })
 }
 
@@ -731,8 +740,9 @@ impl MetricDao<'_> {
         sqlx::query(
             "INSERT INTO metric_snapshots (host_id, collected_at, cpu_percent,
              memory_used_bytes, memory_total_bytes, disk_used_bytes, disk_total_bytes,
-             load_1, load_5, load_15, network_rx_bytes, network_tx_bytes)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             load_1, load_5, load_15, network_rx_bytes, network_tx_bytes,
+             memory_cached_bytes, disk_read_bytes, disk_write_bytes, cpu_per_core)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&snap.host_id)
         .bind(snap.collected_at)
@@ -746,6 +756,10 @@ impl MetricDao<'_> {
         .bind(snap.load_15)
         .bind(snap.network_rx_bytes)
         .bind(snap.network_tx_bytes)
+        .bind(snap.memory_cached_bytes)
+        .bind(snap.disk_read_bytes)
+        .bind(snap.disk_write_bytes)
+        .bind(serde_json::to_string(&snap.cpu_per_core).unwrap_or_else(|_| "[]".to_string()))
         .execute(self.pool)
         .await?;
         Ok(())
@@ -979,6 +993,10 @@ mod tests {
                     load_15: None,
                     network_rx_bytes: None,
                     network_tx_bytes: None,
+                    memory_cached_bytes: None,
+                    disk_read_bytes: None,
+                    disk_write_bytes: None,
+                    cpu_per_core: Vec::new(),
                 })
                 .await
                 .unwrap();
