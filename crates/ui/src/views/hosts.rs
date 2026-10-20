@@ -12,16 +12,16 @@ pub fn left_panel(
     data: &UiData,
     events: &mut Vec<UiEvent>,
 ) {
+    if state.group_dialog_open {
+        group_dialog(ui, state, data, events);
+    }
     if state.hosts_panel_collapsed {
         egui::Panel::left("host_panel")
-            .default_size(40.0)
-            .size_range(40.0..=40.0)
+            .default_size(92.0)
+            .size_range(92.0..=92.0)
             .show(ui, |ui| {
-                if ui
-                    .add(egui::Button::new("☰").frame(false))
-                    .on_hover_text(state.t("Expand"))
-                    .clicked()
-                {
+                ui.add_space(2.0);
+                if menu_button(ui, state.t("Expand")) {
                     state.hosts_panel_collapsed = false;
                 }
             });
@@ -33,10 +33,7 @@ pub fn left_panel(
         .show(ui, |ui| {
             // Tree header (Xterminal): collapse | refresh, +group, +protocol
             ui.horizontal(|ui| {
-                if ui
-                    .add(egui::Button::new(format!("☰ {}", state.t("Collapse"))).frame(false))
-                    .clicked()
-                {
+                if menu_button(ui, state.t("Collapse")) {
                     state.hosts_panel_collapsed = true;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -61,7 +58,9 @@ pub fn left_panel(
                         .on_hover_text(state.t("New group"))
                         .clicked()
                     {
-                        state.new_group_open = !state.new_group_open;
+                        state.new_group_name.clear();
+                        state.group_color = None;
+                        state.group_dialog_open = true;
                     }
                     if ui
                         .add(egui::Button::new("⟳").frame(false))
@@ -72,34 +71,6 @@ pub fn left_panel(
                     }
                 });
             });
-            if state.new_group_open {
-                ui.horizontal(|ui| {
-                    let hint = state.t("New group");
-                    let resp = ui.add(
-                        egui::TextEdit::singleline(&mut state.new_group_name)
-                            .hint_text(hint)
-                            .desired_width(f32::INFINITY),
-                    );
-                    resp.request_focus();
-                    if ui.small_button("＋").clicked() && !state.new_group_name.trim().is_empty() {
-                        events.push(UiEvent::CreateGroup(
-                            state.new_group_name.trim().to_string(),
-                        ));
-                        state.new_group_name.clear();
-                        state.new_group_open = false;
-                    }
-                    if resp.lost_focus()
-                        && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                        && !state.new_group_name.trim().is_empty()
-                    {
-                        events.push(UiEvent::CreateGroup(
-                            state.new_group_name.trim().to_string(),
-                        ));
-                        state.new_group_name.clear();
-                        state.new_group_open = false;
-                    }
-                });
-            }
             ui.add_space(4.0);
 
             // Search
@@ -205,6 +176,11 @@ pub fn left_panel(
                         } else {
                             state.tree_expanded.insert(group.id.clone());
                         }
+                    }
+                    if let Some(hex) = group.color.as_deref().and_then(parse_hex) {
+                        let (rect, _) =
+                            ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                        ui.painter_at(rect).circle_filled(rect.center(), 4.5, hex);
                     }
                     if tree_row(ui, "📁", &group.name, count, selected) {
                         state.group_filter = GroupFilter::Group(group.id.clone());
@@ -351,5 +327,210 @@ pub(crate) fn host_form_from(host: &opsdeck_storage::models::Host, data: &UiData
         passphrase: String::new(),
         credential_id: host.credential_id.clone().unwrap_or_default(),
         error: None,
+    }
+}
+
+/// Hamburger + label button with the icon painted by hand (the bundled
+/// font has no ☰ glyph — it rendered as a tofu box).
+fn menu_button(ui: &mut egui::Ui, label: &str) -> bool {
+    let font = egui::FontId::proportional(13.0);
+    let text_w = ui
+        .fonts_mut(|f| f.layout_no_wrap(label.to_string(), font.clone(), egui::Color32::WHITE))
+        .size()
+        .x;
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(text_w + 30.0, 22.0), egui::Sense::click());
+    let painter = ui.painter_at(rect);
+    if resp.hovered() {
+        painter.rect_filled(rect, 4.0, ui.visuals().widgets.hovered.bg_fill);
+    }
+    let color = ui.visuals().text_color();
+    let x = rect.left() + 6.0;
+    for i in 0..3 {
+        let y = rect.center().y + (i as f32 - 1.0) * 4.0;
+        painter.line_segment(
+            [egui::pos2(x, y), egui::pos2(x + 11.0, y)],
+            egui::Stroke::new(1.6, color),
+        );
+    }
+    painter.text(
+        egui::pos2(x + 17.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        font,
+        color,
+    );
+    resp.clicked()
+}
+
+/// Parse a "#rrggbb" hex color.
+pub(crate) fn parse_hex(s: &str) -> Option<egui::Color32> {
+    let h = s.strip_prefix('#')?;
+    if h.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&h[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&h[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&h[4..6], 16).ok()?;
+    Some(egui::Color32::from_rgb(r, g, b))
+}
+
+/// Color palette offered by the create-group dialog.
+const GROUP_COLORS: [(&str, egui::Color32); 9] = [
+    ("#e5484d", egui::Color32::from_rgb(229, 72, 77)),
+    ("#f76b15", egui::Color32::from_rgb(247, 107, 21)),
+    ("#ffb224", egui::Color32::from_rgb(255, 178, 36)),
+    ("#46a758", egui::Color32::from_rgb(70, 167, 88)),
+    ("#12a594", egui::Color32::from_rgb(18, 165, 148)),
+    ("#0090ff", egui::Color32::from_rgb(0, 144, 255)),
+    ("#6e56cf", egui::Color32::from_rgb(110, 86, 207)),
+    ("#d6409f", egui::Color32::from_rgb(214, 64, 159)),
+    ("#8b8d98", egui::Color32::from_rgb(139, 141, 152)),
+];
+
+/// Create-group dialog (Xterminal): centered modal with a name field and
+/// a color palette; Confirm stays disabled until a name is typed.
+fn group_dialog(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+    let theme = data.theme;
+    let mut open = true;
+    let mut cancel = false;
+    let mut confirm = false;
+    egui::Window::new("group_dialog")
+        .open(&mut open)
+        .title_bar(false)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .frame(
+            egui::Frame::new()
+                .fill(theme.panel())
+                .stroke(egui::Stroke::new(
+                    1.0,
+                    egui::Color32::from_rgba_unmultiplied(
+                        theme.text().r(),
+                        theme.text().g(),
+                        theme.text().b(),
+                        40,
+                    ),
+                ))
+                .corner_radius(8.0)
+                .inner_margin(16.0)
+                .shadow(egui::epaint::Shadow {
+                    offset: [0, 4],
+                    blur: 16,
+                    spread: 0,
+                    color: egui::Color32::from_black_alpha(60),
+                }),
+        )
+        .show(ui.ctx(), |ui| {
+            ui.set_width(380.0);
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(state.t("Create group"))
+                        .strong()
+                        .size(15.0),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add(egui::Button::new("✕").frame(false))
+                        .on_hover_text(state.t("Cancel"))
+                        .clicked()
+                    {
+                        cancel = true;
+                    }
+                });
+            });
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                ui.label(format!("{}:", state.t("Name")));
+                let hint = state.t("New group");
+                let resp = ui.add(
+                    egui::TextEdit::singleline(&mut state.new_group_name)
+                        .hint_text(hint)
+                        .desired_width(f32::INFINITY),
+                );
+                resp.request_focus();
+                if resp.lost_focus()
+                    && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                    && !state.new_group_name.trim().is_empty()
+                {
+                    confirm = true;
+                }
+            });
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                ui.label(format!("{}:", state.t("Color")));
+                // "No color" tile (square with a red slash, like the reference)
+                let (rect, resp) =
+                    ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                let painter = ui.painter_at(rect);
+                painter.rect_stroke(
+                    rect.shrink(1.0),
+                    3.0,
+                    egui::Stroke::new(1.0, ui.visuals().weak_text_color()),
+                    egui::StrokeKind::Inside,
+                );
+                painter.line_segment(
+                    [rect.left_bottom(), rect.right_top()],
+                    egui::Stroke::new(1.5, egui::Color32::from_rgb(229, 72, 77)),
+                );
+                if state.group_color.is_none() {
+                    painter.rect_stroke(
+                        rect.expand(1.5),
+                        4.0,
+                        egui::Stroke::new(1.6, theme.accent()),
+                        egui::StrokeKind::Outside,
+                    );
+                }
+                if resp.clicked() {
+                    state.group_color = None;
+                }
+                for (hex, color) in GROUP_COLORS {
+                    let (rect, resp) =
+                        ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                    let painter = ui.painter_at(rect);
+                    painter.circle_filled(rect.center(), 8.0, color);
+                    if state.group_color.as_deref() == Some(hex) {
+                        painter.circle_stroke(
+                            rect.center(),
+                            10.0,
+                            egui::Stroke::new(1.6, theme.accent()),
+                        );
+                    }
+                    if resp.clicked() {
+                        state.group_color = Some(hex.to_string());
+                    }
+                }
+            });
+            ui.add_space(14.0);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let ok = egui::Button::new(
+                    egui::RichText::new(state.t("Confirm")).color(egui::Color32::WHITE),
+                )
+                .fill(super::manager::XGREEN);
+                if ui
+                    .add_enabled(!state.new_group_name.trim().is_empty(), ok)
+                    .clicked()
+                {
+                    confirm = true;
+                }
+                if ui.button(state.t("Cancel")).clicked() {
+                    cancel = true;
+                }
+            });
+        });
+    if !open {
+        cancel = true;
+    }
+    if cancel {
+        state.group_dialog_open = false;
+    }
+    if confirm && !state.new_group_name.trim().is_empty() {
+        events.push(UiEvent::CreateGroup(
+            state.new_group_name.trim().to_string(),
+            state.group_color.clone(),
+        ));
+        state.new_group_name.clear();
+        state.group_dialog_open = false;
     }
 }

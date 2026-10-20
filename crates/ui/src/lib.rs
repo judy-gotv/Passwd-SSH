@@ -70,7 +70,7 @@ pub enum UiEvent {
     /// Delete the given hosts (batch, with orphan credential cleanup).
     DeleteHosts(Vec<String>),
     PingHosts,
-    CreateGroup(String),
+    CreateGroup(String, Option<String>),
     DeleteGroup(String),
     TestConnection(Box<HostForm>),
     // remote desktop

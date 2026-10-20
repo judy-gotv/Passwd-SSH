@@ -360,6 +360,9 @@ pub struct HostGroup {
     pub parent_id: Option<String>,
     pub sort_order: i64,
     pub created_at: i64,
+    /// Optional display color (hex "#rrggbb") picked in the group dialog.
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

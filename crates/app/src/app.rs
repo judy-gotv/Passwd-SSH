@@ -1766,7 +1766,7 @@ impl OpsDeckApp {
                 self.state.toast(self.state.t("Hosts deleted"), false);
             }
             UiEvent::PingHosts => self.spawn_ping(),
-            UiEvent::CreateGroup(name) => {
+            UiEvent::CreateGroup(name, color) => {
                 let storage = self.storage.clone();
                 tokio::spawn(async move {
                     let group = opsdeck_storage::models::HostGroup {
@@ -1775,6 +1775,7 @@ impl OpsDeckApp {
                         parent_id: None,
                         sort_order: 0,
                         created_at: now_unix(),
+                        color,
                     };
                     let _ = storage.groups().create(&group).await;
                 });

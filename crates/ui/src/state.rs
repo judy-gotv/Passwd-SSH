@@ -251,8 +251,10 @@ pub struct UiState {
     pub tree_expanded: std::collections::HashSet<String>,
     /// Whether the left host panel is collapsed to a slim strip.
     pub hosts_panel_collapsed: bool,
-    /// Whether the inline new-group input is open in the tree header.
-    pub new_group_open: bool,
+    /// Whether the create-group dialog is open.
+    pub group_dialog_open: bool,
+    /// Color picked in the create-group dialog (hex), if any.
+    pub group_color: Option<String>,
     pub group_filter: GroupFilter,
     pub new_group_name: String,
     pub host_search: String,
@@ -362,7 +364,8 @@ impl UiState {
             pending_batch_delete: Vec::new(),
             tree_expanded: std::collections::HashSet::new(),
             hosts_panel_collapsed: false,
-            new_group_open: false,
+            group_dialog_open: false,
+            group_color: None,
             group_filter: GroupFilter::All,
             new_group_name: String::new(),
             host_search: String::new(),

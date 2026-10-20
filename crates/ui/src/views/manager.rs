@@ -7,7 +7,6 @@ use crate::{GroupFilter, HostForm, MainTab, UiData, UiEvent, UiState};
 
 /// Xterminal brand green (header bar, Connect buttons).
 pub(crate) const XGREEN: egui::Color32 = egui::Color32::from_rgb(40, 174, 96);
-const XGREEN_DARK: egui::Color32 = egui::Color32::from_rgb(30, 140, 75);
 
 /// Filter hosts by the current group filter + search query.
 fn filtered_hosts<'a>(state: &UiState, data: &'a UiData) -> Vec<&'a opsdeck_storage::models::Host> {
@@ -142,7 +141,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
 
                     for host in hosts {
                         let connecting = data.connecting.contains_key(&host.id);
-                        let selected = state.selected_host.as_deref() == Some(host.id.as_str());
 
                         // Batch checkbox
                         let mut checked = state.manager_selected.contains(&host.id);
@@ -170,9 +168,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                         os_badge(ui, data, host);
                         // Latency
                         latency_badge(ui, state, data, &host.id);
-                        // Name
-                        let name_resp =
-                            ui.selectable_label(selected, egui::RichText::new(&host.name).strong());
+                        // Name: plain text (Xterminal), click selects.
+                        let name_resp = ui.add(
+                            egui::Label::new(egui::RichText::new(&host.name).strong())
+                                .sense(egui::Sense::click()),
+                        );
                         if name_resp.clicked() {
                             state.selected_host = Some(host.id.clone());
                         }
@@ -231,7 +231,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                                     events.push(UiEvent::ConnectHost(host.id.clone()));
                                 }
                             }
-                            if ui.small_button(state.t("Edit")).clicked() {
+                            if ui
+                                .add(egui::Button::new(state.t("Edit")).small().frame(false))
+                                .clicked()
+                            {
                                 state.host_form = super::hosts::host_form_from(host, data);
                                 state.show_host_editor = true;
                             }
@@ -302,69 +305,87 @@ fn protocol_empty_state(ui: &mut egui::Ui, state: &mut UiState) {
 
 /// The green Xterminal-style header: protocol tabs + repository actions.
 fn green_header(ui: &mut egui::Ui, state: &mut UiState, events: &mut Vec<UiEvent>) {
-    egui::Frame::new()
-        .fill(XGREEN)
-        .inner_margin(egui::Margin::symmetric(10, 7))
-        .corner_radius(4.0)
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                for (id, icon, label) in [
-                    ("ssh", "🖥", "SSH"),
-                    ("rdp", "🪟", "RDP"),
-                    ("telnet", "⌨", "Telnet"),
-                    ("tunnel", "⇄", state.t("Tunnels")),
-                    ("vnc", "🖱", "VNC"),
-                ] {
-                    let selected = state.manager_protocol == id;
-                    let mut text =
-                        egui::RichText::new(format!("{icon} {label}")).color(egui::Color32::WHITE);
-                    if selected {
-                        text = text
-                            .background_color(egui::Color32::WHITE)
-                            .color(XGREEN_DARK)
-                            .strong();
-                    }
-                    if ui.selectable_label(selected, text).clicked() {
-                        state.manager_protocol = id.to_string();
-                    }
-                }
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new("⚙").color(egui::Color32::WHITE))
-                            .frame(false),
-                    )
-                    .on_hover_text(state.t("Settings"))
-                    .clicked()
-                {
-                    state.main_tab = MainTab::Settings;
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let pw_btn = egui::Button::new(
-                        egui::RichText::new(state.t("Edit repository password")).color(XGREEN_DARK),
-                    )
-                    .fill(egui::Color32::WHITE);
-                    if ui.add(pw_btn).clicked() {
-                        state.main_tab = MainTab::Settings;
-                    }
-                    let import_btn = egui::Button::new(
-                        egui::RichText::new(format!("⤒ {}", state.t("Import"))).color(XGREEN_DARK),
-                    )
-                    .fill(egui::Color32::WHITE);
-                    if ui.add(import_btn).clicked() {
-                        state.confirm = Some(crate::ConfirmDialog {
-                            title: state.t("Import hosts").to_string(),
-                            message: state
-                                .t("Paste the exported JSON below, then confirm.")
-                                .to_string(),
-                            confirm_label: state.t("Import").to_string(),
-                            action: "import_hosts".to_string(),
-                        });
-                        state.import_buffer.clear();
-                    }
-                    let _ = events;
+    // Xterminal top navigation: white row, plain text protocol tabs with
+    // a green underline on the active one, repository actions on the right.
+    ui.horizontal(|ui| {
+        for (id, label) in [
+            ("ssh", "SSH"),
+            ("rdp", "RDP"),
+            ("telnet", "Telnet"),
+            ("tunnel", state.t("Tunnels")),
+            ("vnc", "VNC"),
+        ] {
+            if proto_tab(ui, label, state.manager_protocol == id) {
+                state.manager_protocol = id.to_string();
+            }
+            ui.add_space(6.0);
+        }
+        if ui
+            .add(egui::Button::new("⚙").frame(false))
+            .on_hover_text(state.t("Settings"))
+            .clicked()
+        {
+            state.main_tab = MainTab::Settings;
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let pw_btn = egui::Button::new(state.t("Edit repository password"));
+            if ui.add(pw_btn).clicked() {
+                state.main_tab = MainTab::Settings;
+            }
+            let import_btn = egui::Button::new(format!("⤒ {}", state.t("Import")));
+            if ui.add(import_btn).clicked() {
+                state.confirm = Some(crate::ConfirmDialog {
+                    title: state.t("Import hosts").to_string(),
+                    message: state
+                        .t("Paste the exported JSON below, then confirm.")
+                        .to_string(),
+                    confirm_label: state.t("Import").to_string(),
+                    action: "import_hosts".to_string(),
                 });
-            });
+                state.import_buffer.clear();
+            }
+            let _ = events;
         });
+    });
+    ui.separator();
+}
+
+/// One protocol tab in the top navigation: text with a green underline
+/// when active (Xterminal style).
+fn proto_tab(ui: &mut egui::Ui, label: &str, selected: bool) -> bool {
+    let font = egui::FontId::proportional(14.0);
+    let text_w = ui
+        .fonts_mut(|f| f.layout_no_wrap(label.to_string(), font.clone(), egui::Color32::WHITE))
+        .size()
+        .x;
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(text_w + 12.0, 28.0), egui::Sense::click());
+    let painter = ui.painter_at(rect);
+    let color = if selected {
+        XGREEN
+    } else if resp.hovered() {
+        ui.visuals().text_color()
+    } else {
+        ui.visuals().weak_text_color()
+    };
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        label,
+        font,
+        color,
+    );
+    if selected {
+        painter.rect_filled(
+            egui::Rect::from_min_max(
+                egui::pos2(rect.left() + 3.0, rect.bottom() - 2.0),
+                egui::pos2(rect.right() - 3.0, rect.bottom()),
+            ),
+            1.0,
+            XGREEN,
+        );
+    }
+    resp.clicked()
 }
 
 /// Local / cloud repository segmented switch (mirrors the sync setting).
@@ -398,67 +419,180 @@ fn repo_switch(ui: &mut egui::Ui, state: &mut UiState, data: &UiData) {
         });
 }
 
-/// System badge: a colored circle with the distro initial, derived
-/// from the host's real OS (collected sysinfo); protocol fallback before
-/// the host has ever been connected.
+/// System badge: the distro's real logo, drawn with the painter
+/// (Debian swirl, Ubuntu circle-of-friends, Tux, Windows panes, …),
+/// derived from the host's collected OS; protocol fallback before the
+/// host has ever been connected.
 fn os_badge(ui: &mut egui::Ui, data: &UiData, host: &opsdeck_storage::models::Host) {
-    let (letter, color) = distro_badge(data, host);
     let hint = data
         .sysinfo
         .get(&host.id)
         .map(|i| format!("{} · {}", i.os_name, i.kernel))
         .unwrap_or_else(|| host.protocol.to_uppercase());
-    let (rect, resp) = ui.allocate_exact_size(egui::Vec2::new(20.0, 20.0), egui::Sense::hover());
+    let (rect, resp) = ui.allocate_exact_size(egui::Vec2::new(22.0, 22.0), egui::Sense::hover());
     let painter = ui.painter_at(rect);
-    painter.circle_filled(rect.center(), 9.0, color);
-    painter.text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        letter,
-        egui::FontId::proportional(10.0),
-        egui::Color32::WHITE,
-    );
+    paint_os_logo(&painter, rect, os_kind(data, host));
     resp.on_hover_text(hint);
 }
 
-/// (initial, brand color) for the host's OS / protocol.
-fn distro_badge(
-    data: &UiData,
-    host: &opsdeck_storage::models::Host,
-) -> (&'static str, egui::Color32) {
-    use egui::Color32;
+/// Which logo to draw for this host.
+fn os_kind(data: &UiData, host: &opsdeck_storage::models::Host) -> &'static str {
     let os = data
         .sysinfo
         .get(&host.id)
         .map(|i| i.os_name.to_lowercase())
         .unwrap_or_default();
     let has = |s: &str| os.contains(s);
-    if has("ubuntu") {
-        ("U", Color32::from_rgb(233, 84, 32))
-    } else if has("debian") {
-        ("D", Color32::from_rgb(215, 10, 83))
+    if has("debian") {
+        "debian"
+    } else if has("ubuntu") {
+        "ubuntu"
     } else if has("raspbian") {
-        ("R", Color32::from_rgb(215, 10, 83))
+        "raspbian"
     } else if has("centos") {
-        ("C", Color32::from_rgb(147, 34, 121))
+        "centos"
     } else if has("red hat") || has("rhel") {
-        ("R", Color32::from_rgb(238, 0, 0))
+        "rhel"
     } else if has("alpine") {
-        ("A", Color32::from_rgb(13, 89, 127))
+        "alpine"
     } else if has("arch") {
-        ("A", Color32::from_rgb(23, 147, 209))
+        "arch"
     } else if has("fedora") {
-        ("F", Color32::from_rgb(81, 162, 218))
+        "fedora"
     } else if has("suse") {
-        ("S", Color32::from_rgb(115, 186, 37))
+        "suse"
     } else if has("windows") {
-        ("W", Color32::from_rgb(0, 173, 239))
+        "windows"
     } else {
         match host.protocol.as_str() {
-            "rdp" => ("W", Color32::from_rgb(0, 173, 239)),
-            "vnc" => ("V", Color32::from_rgb(120, 90, 200)),
-            "telnet" => ("T", Color32::from_rgb(96, 96, 96)),
-            _ => ("L", Color32::from_rgb(90, 140, 90)),
+            "rdp" => "windows",
+            "vnc" => "vnc",
+            "telnet" => "telnet",
+            _ => "tux",
+        }
+    }
+}
+
+/// Draw a distro logo into `rect` (22×22 slot).
+fn paint_os_logo(painter: &egui::Painter, rect: egui::Rect, kind: &str) {
+    use egui::Color32;
+    let c = rect.center();
+    match kind {
+        "debian" => {
+            // Debian swirl: an Archimedean spiral in Debian red.
+            let pts: Vec<egui::Pos2> = (0..=64)
+                .map(|i| {
+                    let t = i as f32 / 64.0;
+                    let ang = t * std::f32::consts::TAU * 1.72 - std::f32::consts::FRAC_PI_2;
+                    let r = 1.2 + t * 8.2;
+                    c + egui::vec2(r * ang.cos(), r * ang.sin())
+                })
+                .collect();
+            painter.add(egui::Shape::line(
+                pts,
+                egui::Stroke::new(2.0, Color32::from_rgb(215, 10, 83)),
+            ));
+        }
+        "ubuntu" => {
+            // Ubuntu: orange disc, white ring, three "friends" heads.
+            let orange = Color32::from_rgb(233, 84, 32);
+            painter.circle_filled(c, 10.0, orange);
+            painter.circle_stroke(c, 5.1, egui::Stroke::new(2.0, Color32::WHITE));
+            for k in 0..3 {
+                let a = -std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::TAU / 3.0;
+                let head = c + egui::vec2(5.1 * a.cos(), 5.1 * a.sin());
+                painter.circle_filled(head, 2.3, Color32::WHITE);
+                painter.circle_filled(head, 1.15, orange);
+            }
+        }
+        "windows" => {
+            // Windows: four blue panes with a cross gap.
+            let blue = Color32::from_rgb(0, 173, 239);
+            let s = 7.6;
+            let g = 0.9;
+            for (dx, dy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+                let center = c + egui::vec2(dx * (s / 2.0 + g / 2.0), dy * (s / 2.0 + g / 2.0));
+                painter.rect_filled(
+                    egui::Rect::from_center_size(center, egui::vec2(s, s)),
+                    0.5,
+                    blue,
+                );
+            }
+        }
+        "centos" => {
+            // CentOS: purple four-point star / diamond.
+            let mut pts = Vec::new();
+            for k in 0..8 {
+                let a = k as f32 * std::f32::consts::TAU / 8.0 - std::f32::consts::FRAC_PI_2;
+                let r = if k % 2 == 0 { 10.0 } else { 4.4 };
+                pts.push(c + egui::vec2(r * a.cos(), r * a.sin()));
+            }
+            painter.add(egui::Shape::Path(egui::epaint::PathShape {
+                points: pts,
+                closed: true,
+                fill: Color32::from_rgb(147, 34, 121),
+                stroke: egui::Stroke::NONE.into(),
+            }));
+        }
+        "arch" => {
+            // Arch: the "A" silhouette in Arch blue.
+            let pts = vec![
+                c + egui::vec2(0.0, -10.0),
+                c + egui::vec2(8.2, 9.5),
+                c + egui::vec2(4.7, 9.5),
+                c + egui::vec2(2.3, 2.6),
+                c + egui::vec2(-2.3, 2.6),
+                c + egui::vec2(-4.7, 9.5),
+                c + egui::vec2(-8.2, 9.5),
+            ];
+            painter.add(egui::Shape::Path(egui::epaint::PathShape {
+                points: pts,
+                closed: true,
+                fill: Color32::from_rgb(23, 147, 209),
+                stroke: egui::Stroke::NONE.into(),
+            }));
+        }
+        "tux" => {
+            // Generic Linux: a minimal Tux (black body, white belly,
+            // orange beak and feet).
+            let black = Color32::from_rgb(35, 35, 38);
+            let orange = Color32::from_rgb(245, 166, 35);
+            painter.circle_filled(c + egui::vec2(-3.9, 9.0), 1.9, orange);
+            painter.circle_filled(c + egui::vec2(3.9, 9.0), 1.9, orange);
+            painter.circle_filled(c, 9.3, black);
+            painter.circle_filled(c + egui::vec2(0.0, 3.0), 5.7, Color32::WHITE);
+            painter.circle_filled(c + egui::vec2(-2.5, -4.6), 1.0, Color32::WHITE);
+            painter.circle_filled(c + egui::vec2(2.5, -4.6), 1.0, Color32::WHITE);
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    c + egui::vec2(-2.4, -2.9),
+                    c + egui::vec2(2.4, -2.9),
+                    c + egui::vec2(0.0, -0.7),
+                ],
+                orange,
+                egui::Stroke::NONE,
+            ));
+        }
+        _ => {
+            // Remaining distros / protocols: brand disc + white initial.
+            let (letter, color) = match kind {
+                "alpine" => ("A", Color32::from_rgb(13, 89, 127)),
+                "fedora" => ("F", Color32::from_rgb(81, 162, 218)),
+                "suse" => ("S", Color32::from_rgb(115, 186, 37)),
+                "rhel" => ("R", Color32::from_rgb(238, 0, 0)),
+                "raspbian" => ("R", Color32::from_rgb(162, 40, 70)),
+                "vnc" => ("V", Color32::from_rgb(120, 90, 200)),
+                "telnet" => ("T", Color32::from_rgb(96, 96, 96)),
+                _ => ("L", Color32::from_rgb(90, 140, 90)),
+            };
+            painter.circle_filled(c, 9.5, color);
+            painter.text(
+                c,
+                egui::Align2::CENTER_CENTER,
+                letter,
+                egui::FontId::proportional(10.5),
+                Color32::WHITE,
+            );
         }
     }
 }

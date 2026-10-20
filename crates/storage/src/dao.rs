@@ -63,6 +63,7 @@ fn map_group(row: &sqlx::sqlite::SqliteRow) -> Result<HostGroup, sqlx::Error> {
         parent_id: row.try_get("parent_id")?,
         sort_order: row.try_get("sort_order")?,
         created_at: row.try_get("created_at")?,
+        color: row.try_get("color").unwrap_or(None),
     })
 }
 
@@ -421,14 +422,15 @@ impl HostGroupDao<'_> {
     /// Create a group.
     pub async fn create(&self, group: &HostGroup) -> Result<(), StorageError> {
         sqlx::query(
-            "INSERT INTO host_groups (id, name, parent_id, sort_order, created_at)
-             VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO host_groups (id, name, parent_id, sort_order, created_at, color)
+             VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind(&group.id)
         .bind(&group.name)
         .bind(&group.parent_id)
         .bind(group.sort_order)
         .bind(group.created_at)
+        .bind(&group.color)
         .execute(self.pool)
         .await?;
         Ok(())
@@ -908,6 +910,7 @@ mod tests {
             parent_id: None,
             sort_order: 0,
             created_at: now,
+            color: Some("#46a758".to_string()),
         };
         db.groups().create(&group).await.unwrap();
         assert_eq!(db.groups().list_all().await.unwrap().len(), 1);
