@@ -186,10 +186,13 @@ pub struct DesktopTab {
 
 pub struct UiState {
     pub screen: Screen,
-    // vault screen
+    // vault (the app mirrors exists/unlocked into these every frame)
     pub password_input: String,
     pub password_confirm: String,
     pub unlock_error: Option<String>,
+    pub show_vault_dialog: bool,
+    pub vault_exists: bool,
+    pub vault_unlocked: bool,
     // main
     pub main_tab: MainTab,
     /// Manager protocol tab: "ssh" | "rdp" | "telnet" | "tunnel" | "vnc".
@@ -275,6 +278,9 @@ impl UiState {
             password_input: String::new(),
             password_confirm: String::new(),
             unlock_error: None,
+            show_vault_dialog: false,
+            vault_exists: false,
+            vault_unlocked: false,
             main_tab: MainTab::Manager,
             manager_protocol: "ssh".to_string(),
             group_filter: GroupFilter::All,

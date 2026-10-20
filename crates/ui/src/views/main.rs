@@ -29,8 +29,13 @@ pub fn top_bar(ui: &mut egui::Ui, state: &mut UiState, events: &mut Vec<UiEvent>
                     ui.close();
                 }
                 ui.separator();
-                if ui.button(state.t("🔒 Lock vault")).clicked() {
-                    events.push(UiEvent::LockVault);
+                if state.vault_unlocked {
+                    if ui.button(state.t("🔒 Lock vault")).clicked() {
+                        events.push(UiEvent::LockVault);
+                        ui.close();
+                    }
+                } else if ui.button(state.t("Unlock vault")).clicked() {
+                    state.show_vault_dialog = true;
                     ui.close();
                 }
                 if ui.button(state.t("Quit")).clicked() {

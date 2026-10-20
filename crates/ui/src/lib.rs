@@ -57,6 +57,7 @@ pub enum UiEvent {
     DisconnectSession(SessionId),
     ReconnectSession(SessionId),
     SaveHost(Box<HostForm>),
+    SaveHostConnect(Box<HostForm>),
     DeleteHost(String),
     ToggleFavorite(String),
     ImportHosts(String),
@@ -262,23 +263,19 @@ pub fn render(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mu
     }
     state.prune_toasts();
 
-    match state.screen {
-        Screen::Locked { .. } => {
-            views::vault::show(ui, state, data, events);
-        }
-        Screen::Main => {
-            // All panels share the root Ui so they tile correctly.
-            views::main::top_bar(ui, state, events);
-            views::hosts::left_panel(ui, state, data, events);
-            views::main::central(ui, state, data, events);
-            views::main::status_bar(ui, state, data);
-            views::dialogs::show_all(&ctx, state, data, events);
-            views::toasts::show(&ctx, state);
-        }
-    }
+    // The main UI is always available; the vault locks credentials only,
+    // never the whole app (see the vault dialog).
+    let _ = state.screen;
+    views::main::top_bar(ui, state, events);
+    views::hosts::left_panel(ui, state, data, events);
+    views::main::central(ui, state, data, events);
+    views::main::status_bar(ui, state, data);
+    views::dialogs::show_all(&ctx, state, data, events);
+    views::vault::dialog(&ctx, state, data, events);
+    views::toasts::show(&ctx, state);
 
-    // Global shortcuts (main screen only).
-    if matches!(state.screen, Screen::Main) {
+    // Global shortcuts (not while a modal-ish dialog captures keys).
+    if !state.show_vault_dialog && !state.show_host_editor {
         views::main::global_shortcuts(&ctx, state, events);
     }
 }

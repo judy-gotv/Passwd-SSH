@@ -66,6 +66,8 @@ enum AppMsg {
     SessionList(Vec<SessionInfo>),
     Latencies(HashMap<String, Option<u32>>),
     TestResult(Result<u32, String>),
+    /// A host save finished; connect to it now (Save and connect).
+    HostSavedConnect(String),
     SysInfo {
         host_id: String,
         info: opsdeck_ops::SysInfo,
@@ -256,6 +258,12 @@ pub struct OpsDeckApp {
     cached: CachedData,
     cache_dirty: bool,
     activity: bool,
+    /// A vault file exists on disk (verifier present).
+    vault_exists: bool,
+    /// The vault is currently unlocked (mirrored into UiState per frame).
+    vault_unlocked: bool,
+    /// Host to connect once its save has landed in the cache.
+    pending_connect: Option<String>,
     /// Recently closed sessions shown with a "disconnected" notice until the
     /// user closes the tab (session → (info, closed_at)).
     recently_closed: HashMap<SessionId, (SessionInfo, Instant)>,
@@ -350,13 +358,12 @@ impl OpsDeckApp {
             .map(Language::from_code)
             .unwrap_or_default();
 
-        // Vault state → initial screen.
+        // The vault never gates startup: the app opens on the main screen
+        // and asks for the master password only when a credential is used.
         let verifier_path = config_dir.join("vault.json");
         let has_vault = verifier_path.exists();
         let mut state = UiState::new();
-        state.screen = Screen::Locked {
-            first_run: !has_vault,
-        };
+        state.screen = Screen::Main;
         state.theme_name = theme.name.clone();
         state.language = language;
 
@@ -419,6 +426,9 @@ impl OpsDeckApp {
             cached: CachedData::default(),
             cache_dirty: true,
             activity: false,
+            vault_exists: has_vault,
+            vault_unlocked: false,
+            pending_connect: None,
             recently_closed: HashMap::new(),
             session_views: Vec::new(),
             latencies: HashMap::new(),
@@ -790,6 +800,10 @@ impl OpsDeckApp {
             AppMsg::SysInfo { host_id, info } => {
                 self.sysinfo.insert(host_id, info);
             }
+            AppMsg::HostSavedConnect(host_id) => {
+                self.pending_connect = Some(host_id);
+                self.cache_dirty = true;
+            }
             AppMsg::TestResult(result) => match result {
                 Ok(ms) => {
                     self.state.toast(
@@ -1095,6 +1109,18 @@ impl OpsDeckApp {
             self.state.toast(self.state.t("Host not found"), true);
             return;
         };
+        // Stored credentials live in the vault: if it is locked, ask for the
+        // master password instead of failing the dial with a cryptic error.
+        let needs_vault = host.protocol != "telnet"
+            && (host.credential_id.is_some() || host.passphrase_credential_id.is_some());
+        if needs_vault && !self.vault_unlocked {
+            self.state.toast(
+                self.state.t("Vault is locked — unlock it to connect."),
+                true,
+            );
+            self.state.show_vault_dialog = true;
+            return;
+        }
         if host.protocol == "telnet" {
             self.connect_telnet(&host, open_tab, split_into);
             return;
@@ -1351,7 +1377,9 @@ impl OpsDeckApp {
                 Ok((vault, verifier)) => match self.save_verifier(&verifier) {
                     Ok(()) => {
                         *self.vault.blocking_write() = Some(Arc::new(vault));
-                        self.state.screen = Screen::Main;
+                        self.vault_exists = true;
+                        self.vault_unlocked = true;
+                        self.state.show_vault_dialog = false;
                         self.state.toast(self.state.t("Vault created"), false);
                     }
                     Err(e) => self.state.toast(
@@ -1372,12 +1400,13 @@ impl OpsDeckApp {
                 }) {
                     Ok(vault) => {
                         *self.vault.blocking_write() = Some(Arc::new(vault));
-                        self.state.screen = Screen::Main;
+                        self.vault_unlocked = true;
+                        self.state.show_vault_dialog = false;
                         self.state.unlock_error = None;
                     }
                     Err(_) => {
                         // Never leak why unlock failed.
-                        self.state.unlock_error = Some("Wrong password.".to_string());
+                        self.state.unlock_error = Some(self.state.t("Wrong password.").to_string());
                     }
                 }
             }
@@ -1388,8 +1417,10 @@ impl OpsDeckApp {
                     self.disconnect_session(s);
                 }
                 *self.vault.blocking_write() = None;
-                self.state.screen = Screen::Locked { first_run: false };
+                self.vault_unlocked = false;
+                self.state.show_vault_dialog = false;
                 self.state.password_input.clear();
+                self.state.toast(self.state.t("Vault locked"), false);
             }
             UiEvent::ChangeMasterPassword { old, new } => {
                 // Rekey in the background: unlock with the old password, decrypt
@@ -1510,7 +1541,8 @@ impl OpsDeckApp {
                     }
                 });
             }
-            UiEvent::SaveHost(form) => self.save_host(*form),
+            UiEvent::SaveHost(form) => self.begin_save_host(*form, false),
+            UiEvent::SaveHostConnect(form) => self.begin_save_host(*form, true),
             UiEvent::DeleteHost(id) => {
                 let storage = self.storage.clone();
                 tokio::spawn(async move {
@@ -1940,10 +1972,45 @@ impl OpsDeckApp {
 
     // -- hosts ---------------------------------------------------------------
 
-    fn save_host(&mut self, form: opsdeck_ui::HostForm) {
+    /// Guarded save: creating a credential needs an unlocked vault, and a
+    /// save without any credential material used to die silently inside
+    /// the async task. Refuse early, explain, hand the form back.
+    fn begin_save_host(&mut self, form: opsdeck_ui::HostForm, connect: bool) {
+        if form.credential_id.is_empty() {
+            if !self.vault_unlocked {
+                self.state.toast(
+                    self.state
+                        .t("Vault is locked — unlock it to save this host."),
+                    true,
+                );
+                self.state.show_vault_dialog = true;
+                self.state.host_form = form;
+                self.state.show_host_editor = true;
+                return;
+            }
+            let has_material = !form.password.is_empty()
+                || !form.private_key_pem.trim().is_empty()
+                || form.auth_type == "agent";
+            if !has_material {
+                self.state.toast(
+                    self.state
+                        .t("Enter a password or private key, or pick an existing credential."),
+                    true,
+                );
+                self.state.host_form = form;
+                self.state.show_host_editor = true;
+                return;
+            }
+        }
+        self.save_host(form, connect);
+    }
+
+    fn save_host(&mut self, form: opsdeck_ui::HostForm, connect_after: bool) {
         let storage = self.storage.clone();
         let vault = self.vault.clone();
+        let tx = self.msg_tx.clone();
         tokio::spawn(async move {
+            let mut saved_id: Option<String> = form.id.clone();
             // Resolve or create the credential.
             let mut credential_id = if form.credential_id.is_empty() {
                 None
@@ -2087,6 +2154,7 @@ impl OpsDeckApp {
                 }
             } else {
                 let mut host = Host::new(form.name, form.host, form.username);
+                saved_id = Some(host.id.clone());
                 apply_opts(&mut host);
                 host.port = form.port.parse().unwrap_or(22);
                 host.auth_type = form.auth_type;
@@ -2111,6 +2179,9 @@ impl OpsDeckApp {
                 host.passphrase_credential_id = passphrase_credential_id;
                 let _ = storage.hosts().create(&host).await;
             }
+            if connect_after && let Some(id) = saved_id {
+                let _ = tx.send(AppMsg::HostSavedConnect(id));
+            }
         });
         self.cache_dirty = true;
         self.state.toast(self.state.t("Host saved"), false);
@@ -2118,6 +2189,18 @@ impl OpsDeckApp {
 
     /// Test a connection from the host editor: dials, then disconnects.
     fn test_connection(&mut self, form: opsdeck_ui::HostForm) {
+        if !form.credential_id.is_empty()
+            && form.password.is_empty()
+            && form.private_key_pem.trim().is_empty()
+            && !self.vault_unlocked
+        {
+            self.state.toast(
+                self.state.t("Vault is locked — unlock it to connect."),
+                true,
+            );
+            self.state.show_vault_dialog = true;
+            return;
+        }
         let mut target = Host::new(form.name.clone(), form.host.clone(), form.username.clone());
         target.port = form.port.parse().unwrap_or(22);
         target.auth_type = form.auth_type.clone();
@@ -2358,6 +2441,15 @@ impl eframe::App for OpsDeckApp {
             };
             self.cache_dirty = false;
         }
+
+        // Save-and-connect: the save has landed in the cache by now.
+        if let Some(id) = self.pending_connect.take() {
+            self.connect_host(&id, true, None);
+        }
+
+        // Mirror vault status for the UI (settings, menus, vault dialog).
+        self.state.vault_exists = self.vault_exists;
+        self.state.vault_unlocked = self.vault_unlocked;
 
         // Rebuild the session list for the UI: live sessions plus recently
         // closed ones (shown with a "disconnected" notice). Drop entries whose

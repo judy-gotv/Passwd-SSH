@@ -98,8 +98,10 @@ fn host_key_prompts(
 fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
     let is_new = state.host_form.id.is_none();
     let mut save = false;
+    let mut save_connect = false;
     let mut cancel = false;
     let mut test = false;
+    let mut open = true;
 
     egui::Window::new(if is_new {
         state.t("Add host")
@@ -109,41 +111,51 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
     .collapsible(false)
     .resizable(true)
     .default_width(660.0)
+    // Never taller than the screen: the action bar must stay reachable.
+    .max_height((ctx.content_rect().height() - 16.0).max(320.0))
+    .open(&mut open)
     .show(ctx, |ui| {
-        ui.horizontal_top(|ui| {
-            // Section navigation (Xterminal-style).
-            ui.vertical(|ui| {
-                ui.set_width(120.0);
-                let is_ssh = state.host_form.protocol == "ssh";
-                let mut sections = vec![
-                    (0usize, state.t("Basic info")),
-                    (1, state.t("Connection")),
-                    (4, state.t("Other")),
-                ];
-                if is_ssh {
-                    sections.insert(2, (2, state.t("Jump host")));
-                    sections.insert(3, (3, state.t("Proxy")));
-                    sections.push((5, state.t("Init")));
-                }
-                for (idx, label) in sections {
-                    if ui
-                        .selectable_label(state.host_editor_section == idx, label)
-                        .clicked()
-                    {
-                        state.host_editor_section = idx;
-                    }
-                }
+        // The form scrolls; the action bar below it is always visible.
+        let scroll_h = (ui.ctx().content_rect().height() - 190.0).max(200.0);
+        egui::ScrollArea::vertical()
+            .id_salt("host_editor_scroll")
+            .max_height(scroll_h)
+            .show(ui, |ui| {
+                ui.horizontal_top(|ui| {
+                    // Section navigation (Xterminal-style).
+                    ui.vertical(|ui| {
+                        ui.set_width(120.0);
+                        let is_ssh = state.host_form.protocol == "ssh";
+                        let mut sections = vec![
+                            (0usize, state.t("Basic info")),
+                            (1, state.t("Connection")),
+                            (4, state.t("Other")),
+                        ];
+                        if is_ssh {
+                            sections.insert(2, (2, state.t("Jump host")));
+                            sections.insert(3, (3, state.t("Proxy")));
+                            sections.push((5, state.t("Init")));
+                        }
+                        for (idx, label) in sections {
+                            if ui
+                                .selectable_label(state.host_editor_section == idx, label)
+                                .clicked()
+                            {
+                                state.host_editor_section = idx;
+                            }
+                        }
+                    });
+                    ui.separator();
+                    ui.vertical(|ui| match state.host_editor_section {
+                        0 => section_basic(ui, state, data),
+                        1 => section_connection(ui, state),
+                        2 => section_jump(ui, state, data),
+                        3 => section_proxy(ui, state),
+                        4 => section_other(ui, state),
+                        _ => section_init(ui, state),
+                    });
+                });
             });
-            ui.separator();
-            ui.vertical(|ui| match state.host_editor_section {
-                0 => section_basic(ui, state, data),
-                1 => section_connection(ui, state),
-                2 => section_jump(ui, state, data),
-                3 => section_proxy(ui, state),
-                4 => section_other(ui, state),
-                _ => section_init(ui, state),
-            });
-        });
 
         if let Some(err) = state.host_form.error.clone() {
             ui.colored_label(egui::Color32::from_rgb(255, 120, 120), err);
@@ -159,6 +171,9 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
                 if ui.button(state.t("Save")).clicked() {
                     save = true;
                 }
+                if ui.button(state.t("Save and connect")).clicked() {
+                    save_connect = true;
+                }
                 if ui.button(state.t("Cancel")).clicked() {
                     cancel = true;
                 }
@@ -166,10 +181,13 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
         });
     });
 
+    if !open {
+        cancel = true;
+    }
     if test {
         events.push(UiEvent::TestConnection(Box::new(state.host_form.clone())));
     }
-    if save {
+    if save || save_connect {
         // Validate.
         let err = if state.host_form.name.trim().is_empty() {
             Some(state.t("Name is required.").to_string())
@@ -187,9 +205,12 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
         } else {
             state.host_form.error = None;
             state.show_host_editor = false;
-            events.push(UiEvent::SaveHost(Box::new(std::mem::take(
-                &mut state.host_form,
-            ))));
+            let form = Box::new(std::mem::take(&mut state.host_form));
+            if save_connect {
+                events.push(UiEvent::SaveHostConnect(form));
+            } else {
+                events.push(UiEvent::SaveHost(form));
+            }
             state.host_form = HostForm::blank();
         }
     }

@@ -64,36 +64,56 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
             ui.add_space(12.0);
             ui.separator();
             ui.label(egui::RichText::new(state.t("Vault")).strong());
-            ui.horizontal(|ui| {
-                ui.label(state.t("Current password:"));
-                ui.add(egui::TextEdit::singleline(&mut state.settings_pw_old).password(true));
-            });
-            ui.horizontal(|ui| {
-                ui.label(state.t("New password:"));
-                ui.add(egui::TextEdit::singleline(&mut state.settings_pw_new).password(true));
-            });
-            ui.horizontal(|ui| {
-                ui.label(state.t("Confirm new:"));
-                ui.add(egui::TextEdit::singleline(&mut state.settings_pw_confirm).password(true));
-            });
-            ui.horizontal(|ui| {
-                if ui.button(state.t("Change master password")).clicked() {
-                    if state.settings_pw_new.len() < 8 {
-                        state.toast(state.t("New password must be at least 8 characters"), true);
-                    } else if state.settings_pw_new != state.settings_pw_confirm {
-                        state.toast(state.t("New passwords do not match"), true);
-                    } else {
-                        events.push(UiEvent::ChangeMasterPassword {
-                            old: std::mem::take(&mut state.settings_pw_old),
-                            new: std::mem::take(&mut state.settings_pw_new),
-                        });
-                        state.settings_pw_confirm.clear();
+            if !state.vault_exists {
+                ui.label(state.t(
+                    "No vault yet — set a master password so credentials can be stored encrypted.",
+                ));
+                if ui.button(state.t("Set master password")).clicked() {
+                    state.show_vault_dialog = true;
+                }
+            } else if !state.vault_unlocked {
+                ui.label(state.t("Vault is locked."));
+                if ui.button(state.t("Unlock vault")).clicked() {
+                    state.show_vault_dialog = true;
+                }
+            } else {
+                ui.label(state.t("Vault is unlocked."));
+                ui.horizontal(|ui| {
+                    ui.label(state.t("Current password:"));
+                    ui.add(egui::TextEdit::singleline(&mut state.settings_pw_old).password(true));
+                });
+                ui.horizontal(|ui| {
+                    ui.label(state.t("New password:"));
+                    ui.add(egui::TextEdit::singleline(&mut state.settings_pw_new).password(true));
+                });
+                ui.horizontal(|ui| {
+                    ui.label(state.t("Confirm new:"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut state.settings_pw_confirm).password(true),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    if ui.button(state.t("Change master password")).clicked() {
+                        if state.settings_pw_new.len() < 8 {
+                            state.toast(
+                                state.t("New password must be at least 8 characters"),
+                                true,
+                            );
+                        } else if state.settings_pw_new != state.settings_pw_confirm {
+                            state.toast(state.t("New passwords do not match"), true);
+                        } else {
+                            events.push(UiEvent::ChangeMasterPassword {
+                                old: std::mem::take(&mut state.settings_pw_old),
+                                new: std::mem::take(&mut state.settings_pw_new),
+                            });
+                            state.settings_pw_confirm.clear();
+                        }
                     }
-                }
-                if ui.button(state.t("🔒 Lock vault")).clicked() {
-                    events.push(UiEvent::LockVault);
-                }
-            });
+                    if ui.button(state.t("🔒 Lock vault")).clicked() {
+                        events.push(UiEvent::LockVault);
+                    }
+                });
+            }
 
             ui.add_space(12.0);
             ui.separator();

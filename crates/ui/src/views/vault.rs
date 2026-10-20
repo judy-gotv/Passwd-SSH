@@ -1,26 +1,31 @@
-//! Vault lock screen: first-run setup and unlock.
+//! Vault dialog: create / unlock / lock, on demand. The app itself never
+//! blocks on the vault — only credential access does, and those paths open
+//! this dialog when the vault is locked.
 //! Author: Passwd Word
 
 use egui::TextEdit;
 
-use crate::{Screen, UiData, UiEvent, UiState};
+use crate::{UiData, UiEvent, UiState};
 
-/// Draw the lock screen.
-pub fn show(ui: &mut egui::Ui, state: &mut UiState, _data: &UiData, events: &mut Vec<UiEvent>) {
-    let first_run = matches!(state.screen, Screen::Locked { first_run: true });
+/// Draw the vault dialog when `state.show_vault_dialog` is set.
+pub fn dialog(ctx: &egui::Context, state: &mut UiState, _data: &UiData, events: &mut Vec<UiEvent>) {
+    if !state.show_vault_dialog {
+        return;
+    }
+    let mut open = true;
+    let mut lock_clicked = false;
 
-    egui::CentralPanel::default().show(ui, |ui| {
-        ui.vertical_centered(|ui| {
-            ui.add_space(90.0);
-            ui.heading(egui::RichText::new("OpsDeck").size(36.0));
-            ui.label(state.t("SSH Workstation"));
-            ui.add_space(30.0);
-
+    egui::Window::new(state.t("Vault"))
+        .collapsible(false)
+        .resizable(false)
+        .default_width(360.0)
+        .open(&mut open)
+        .show(ctx, |ui| {
             let width = 320.0;
-            ui.set_max_width(width);
-
-            if first_run {
-                ui.label(state.t("Create a master password. It encrypts all stored credentials."));
+            if !state.vault_exists {
+                ui.label(
+                    state.t("Create a master password. It encrypts all stored credentials."),
+                );
                 ui.add_space(8.0);
                 let pw_hint = state.t("Master password");
                 let pw = TextEdit::singleline(&mut state.password_input)
@@ -41,7 +46,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, _data: &UiData, events: &mut
                 if ui.button(state.t("Create vault")).clicked() {
                     try_create(state, events);
                 }
-            } else {
+            } else if !state.vault_unlocked {
                 ui.label(state.t("Enter your master password to unlock."));
                 ui.add_space(8.0);
                 let pw_hint = state.t("Master password");
@@ -50,7 +55,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, _data: &UiData, events: &mut
                     .hint_text(pw_hint)
                     .desired_width(width);
                 let resp = ui.add(pw);
-                // Focus the field on first show.
                 if state.unlock_error.is_none() && state.password_input.is_empty() {
                     resp.request_focus();
                 }
@@ -61,6 +65,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, _data: &UiData, events: &mut
                 if ui.button(state.t("Unlock")).clicked() {
                     try_unlock(state, events);
                 }
+            } else {
+                ui.label(state.t("Vault is unlocked."));
+                ui.add_space(8.0);
+                if ui.button(state.t("🔒 Lock vault")).clicked() {
+                    lock_clicked = true;
+                }
             }
 
             if let Some(err) = state.unlock_error.clone() {
@@ -68,16 +78,25 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, _data: &UiData, events: &mut
                 ui.colored_label(egui::Color32::from_rgb(255, 90, 90), err);
             }
 
-            ui.add_space(24.0);
+            ui.add_space(16.0);
             ui.label(
-                egui::RichText::new(
-                    state.t("Credentials never leave this device unencrypted.\nThere is no password recovery — don't forget it."),
-                )
+                egui::RichText::new(state.t(
+                    "Credentials never leave this device unencrypted.\nThere is no password recovery — don't forget it.",
+                ))
                 .small()
                 .weak(),
             );
         });
-    });
+
+    if lock_clicked {
+        events.push(UiEvent::LockVault);
+    }
+    if !open {
+        state.show_vault_dialog = false;
+        state.password_input.clear();
+        state.password_confirm.clear();
+        state.unlock_error = None;
+    }
 }
 
 fn try_create(state: &mut UiState, events: &mut Vec<UiEvent>) {
