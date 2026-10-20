@@ -78,16 +78,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 )
                 .fill(XGREEN);
                 if ui.add(new_btn).clicked() {
-                    state.host_form = HostForm::blank();
-                    state.host_form.protocol = state.manager_protocol.clone();
-                    state.host_form.port = match state.manager_protocol.as_str() {
-                        "telnet" => "23".to_string(),
-                        "vnc" => "5900".to_string(),
-                        "rdp" => "3389".to_string(),
-                        _ => "22".to_string(),
-                    };
-                    state.host_editor_section = 0;
-                    state.show_host_editor = true;
+                    open_new_host(state);
                 }
                 if ui
                     .small_button(format!("🔄 {}", state.t("Refresh")))
@@ -98,24 +89,21 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 }
             });
         });
+        let hosts = filtered_hosts(state, data);
+        if hosts.is_empty() {
+            // No batch bar when empty; the repository switch stays.
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    repo_switch(ui, state, data);
+                });
+            });
+            protocol_empty_state(ui, state);
+            return;
+        }
         batch_bar(ui, state, data, events);
         ui.add_space(6.0);
         ui.separator();
         ui.add_space(4.0);
-
-        let hosts = filtered_hosts(state, data);
-        if hosts.is_empty() {
-            ui.add_space(24.0);
-            ui.vertical_centered(|ui| {
-                ui.label(egui::RichText::new(state.t("No hosts yet.")).weak());
-                ui.label(
-                    egui::RichText::new(state.t("Click “＋ New” to add your first server."))
-                        .small()
-                        .weak(),
-                );
-            });
-            return;
-        }
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             egui::Grid::new("host_table")
@@ -178,9 +166,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                         {
                             events.push(UiEvent::ToggleFavorite(host.id.clone()));
                         }
-                        // System
-                        let (icon, os_hint) = os_badge(data, host);
-                        ui.label(icon).on_hover_text(os_hint);
+                        // System: distro badge from the real OS
+                        os_badge(ui, data, host);
                         // Latency
                         latency_badge(ui, state, data, &host.id);
                         // Name
@@ -200,26 +187,20 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                                 ("port", &host.port.to_string()),
                             ],
                         ));
-                        // Address
+                        // Address: the IP/host only (Xterminal style);
+                        // the copy button copies just the address.
                         ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(format!(
+                            ui.label(egui::RichText::new(&host.host).weak().monospace().small())
+                                .on_hover_text(format!(
                                     "{}@{}:{}",
                                     host.username, host.host, host.port
-                                ))
-                                .weak()
-                                .monospace()
-                                .small(),
-                            );
+                                ));
                             if ui
                                 .small_button("⧉")
                                 .on_hover_text(state.t("Copy"))
                                 .clicked()
                             {
-                                ui.ctx().copy_text(format!(
-                                    "{}@{}:{}",
-                                    host.username, host.host, host.port
-                                ));
+                                ui.ctx().copy_text(host.host.clone());
                             }
                         });
                         // Info (rich metrics block or compact line)
@@ -278,6 +259,47 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
     });
 }
 
+/// Empty state for a protocol tab (Xterminal): big icon, "No {p}
+/// connections yet", and a green create button for that protocol.
+fn protocol_empty_state(ui: &mut egui::Ui, state: &mut UiState) {
+    let proto = state.manager_protocol.clone();
+    let pname = proto_label(&proto);
+    let icon = match proto.as_str() {
+        "rdp" => "🪟",
+        "telnet" => "⌨",
+        "vnc" => "🖱",
+        _ => "🖥",
+    };
+    ui.add_space(70.0);
+    ui.vertical_centered(|ui| {
+        ui.label(egui::RichText::new(icon).size(46.0).weak());
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new(state.tf("No {p} connections yet", &[("p", pname)]))
+                .size(16.0)
+                .strong(),
+        );
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(state.t("Add your first connection with the button below."))
+                .small()
+                .weak(),
+        );
+        ui.add_space(12.0);
+        let btn = egui::Button::new(
+            egui::RichText::new(format!(
+                "＋ {}",
+                state.tf("New {p} connection", &[("p", pname)])
+            ))
+            .color(egui::Color32::WHITE),
+        )
+        .fill(XGREEN);
+        if ui.add(btn).clicked() {
+            open_new_host(state);
+        }
+    });
+}
+
 /// The green Xterminal-style header: protocol tabs + repository actions.
 fn green_header(ui: &mut egui::Ui, state: &mut UiState, events: &mut Vec<UiEvent>) {
     egui::Frame::new()
@@ -305,6 +327,16 @@ fn green_header(ui: &mut egui::Ui, state: &mut UiState, events: &mut Vec<UiEvent
                     if ui.selectable_label(selected, text).clicked() {
                         state.manager_protocol = id.to_string();
                     }
+                }
+                if ui
+                    .add(
+                        egui::Button::new(egui::RichText::new("⚙").color(egui::Color32::WHITE))
+                            .frame(false),
+                    )
+                    .on_hover_text(state.t("Settings"))
+                    .clicked()
+                {
+                    state.main_tab = MainTab::Settings;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let pw_btn = egui::Button::new(
@@ -366,20 +398,93 @@ fn repo_switch(ui: &mut egui::Ui, state: &mut UiState, data: &UiData) {
         });
 }
 
-/// OS / protocol badge for the System column.
-fn os_badge(data: &UiData, host: &opsdeck_storage::models::Host) -> (&'static str, String) {
+/// System badge: a colored circle with the distro initial, derived
+/// from the host's real OS (collected sysinfo); protocol fallback before
+/// the host has ever been connected.
+fn os_badge(ui: &mut egui::Ui, data: &UiData, host: &opsdeck_storage::models::Host) {
+    let (letter, color) = distro_badge(data, host);
     let hint = data
         .sysinfo
         .get(&host.id)
         .map(|i| format!("{} · {}", i.os_name, i.kernel))
         .unwrap_or_else(|| host.protocol.to_uppercase());
-    let icon = match host.protocol.as_str() {
-        "rdp" => "🪟",
-        "vnc" => "🖥",
-        "telnet" => "⌨",
-        _ => "🐧",
+    let (rect, resp) = ui.allocate_exact_size(egui::Vec2::new(20.0, 20.0), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.circle_filled(rect.center(), 9.0, color);
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        letter,
+        egui::FontId::proportional(10.0),
+        egui::Color32::WHITE,
+    );
+    resp.on_hover_text(hint);
+}
+
+/// (initial, brand color) for the host's OS / protocol.
+fn distro_badge(
+    data: &UiData,
+    host: &opsdeck_storage::models::Host,
+) -> (&'static str, egui::Color32) {
+    use egui::Color32;
+    let os = data
+        .sysinfo
+        .get(&host.id)
+        .map(|i| i.os_name.to_lowercase())
+        .unwrap_or_default();
+    let has = |s: &str| os.contains(s);
+    if has("ubuntu") {
+        ("U", Color32::from_rgb(233, 84, 32))
+    } else if has("debian") {
+        ("D", Color32::from_rgb(215, 10, 83))
+    } else if has("raspbian") {
+        ("R", Color32::from_rgb(215, 10, 83))
+    } else if has("centos") {
+        ("C", Color32::from_rgb(147, 34, 121))
+    } else if has("red hat") || has("rhel") {
+        ("R", Color32::from_rgb(238, 0, 0))
+    } else if has("alpine") {
+        ("A", Color32::from_rgb(13, 89, 127))
+    } else if has("arch") {
+        ("A", Color32::from_rgb(23, 147, 209))
+    } else if has("fedora") {
+        ("F", Color32::from_rgb(81, 162, 218))
+    } else if has("suse") {
+        ("S", Color32::from_rgb(115, 186, 37))
+    } else if has("windows") {
+        ("W", Color32::from_rgb(0, 173, 239))
+    } else {
+        match host.protocol.as_str() {
+            "rdp" => ("W", Color32::from_rgb(0, 173, 239)),
+            "vnc" => ("V", Color32::from_rgb(120, 90, 200)),
+            "telnet" => ("T", Color32::from_rgb(96, 96, 96)),
+            _ => ("L", Color32::from_rgb(90, 140, 90)),
+        }
+    }
+}
+
+/// Display label for a protocol id ("ssh" → "SSH", "telnet" → "Telnet").
+pub(crate) fn proto_label(id: &str) -> &'static str {
+    match id {
+        "rdp" => "RDP",
+        "telnet" => "Telnet",
+        "vnc" => "VNC",
+        _ => "SSH",
+    }
+}
+
+/// Open the host editor for a new host of the current manager protocol.
+pub(crate) fn open_new_host(state: &mut UiState) {
+    state.host_form = HostForm::blank();
+    state.host_form.protocol = state.manager_protocol.clone();
+    state.host_form.port = match state.manager_protocol.as_str() {
+        "telnet" => "23".to_string(),
+        "vnc" => "5900".to_string(),
+        "rdp" => "3389".to_string(),
+        _ => "22".to_string(),
     };
-    (icon, hint)
+    state.host_editor_section = 0;
+    state.show_host_editor = true;
 }
 
 /// Live metrics summary for a connected host; OS name when only static

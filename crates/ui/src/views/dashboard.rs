@@ -11,6 +11,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, host_id: &str
     egui::Panel::right("term_monitor")
         .default_size(288.0)
         .size_range(230.0..=430.0)
+        .frame(egui::Frame::new().fill(data.theme.bg()).inner_margin(8.0))
         .show(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 dashboard_body(ui, state, data, host_id);
@@ -23,8 +24,15 @@ fn dashboard_body(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, host_id
     let accent = Color32::from_rgb(theme.accent[0], theme.accent[1], theme.accent[2]);
 
     // System card
-    card(ui, |ui| {
-        ui.label(egui::RichText::new(state.t("System")).strong());
+    card(ui, theme, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(state.t("System")).strong());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if let Some(h) = data.host(host_id) {
+                    chip(ui, theme, &h.host);
+                }
+            });
+        });
         ui.add_space(4.0);
         match data.sysinfo.get(host_id) {
             Some(info) => {
@@ -60,7 +68,7 @@ fn dashboard_body(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, host_id
     let latest = snapshots.and_then(|v| v.last());
     let (Some(snaps), Some(l)) = (snapshots, latest) else {
         ui.add_space(6.0);
-        card(ui, |ui| {
+        card(ui, theme, |ui| {
             ui.label(
                 egui::RichText::new(state.t("Collecting metrics…"))
                     .small()
@@ -72,7 +80,7 @@ fn dashboard_body(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, host_id
 
     // CPU card
     ui.add_space(6.0);
-    card(ui, |ui| {
+    card(ui, theme, |ui| {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(state.t("CPU")).strong());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -106,8 +114,15 @@ fn dashboard_body(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, host_id
 
     // Memory card (donut)
     ui.add_space(6.0);
-    card(ui, |ui| {
-        ui.label(egui::RichText::new(state.t("Memory")).strong());
+    card(ui, theme, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(state.t("Memory")).strong());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if let Some(total) = l.memory_total_bytes {
+                    chip(ui, theme, &fmt_bytes(total));
+                }
+            });
+        });
         ui.add_space(4.0);
         match (l.memory_used_bytes, l.memory_total_bytes) {
             (Some(used), Some(total)) if total > 0 => {
@@ -153,7 +168,7 @@ fn dashboard_body(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, host_id
 
     // Network card
     ui.add_space(6.0);
-    card(ui, |ui| {
+    card(ui, theme, |ui| {
         ui.label(egui::RichText::new(state.t("Network")).strong());
         ui.add_space(4.0);
         let (rx_rate, tx_rate, rx_series) = net_rates(snaps);
@@ -187,8 +202,15 @@ fn dashboard_body(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, host_id
 
     // Disk card
     ui.add_space(6.0);
-    card(ui, |ui| {
-        ui.label(egui::RichText::new(state.t("Disk usage")).strong());
+    card(ui, theme, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(state.t("Disk usage")).strong());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if let (Some(u), Some(t)) = (l.disk_used_bytes, l.disk_total_bytes) {
+                    chip(ui, theme, &format!("{} / {}", fmt_bytes(u), fmt_bytes(t)));
+                }
+            });
+        });
         ui.add_space(4.0);
         match (l.disk_used_bytes, l.disk_total_bytes) {
             (Some(used), Some(total)) if total > 0 => {
@@ -211,7 +233,7 @@ fn dashboard_body(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, host_id
 
     // Processes card
     ui.add_space(6.0);
-    card(ui, |ui| {
+    card(ui, theme, |ui| {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(state.t("Processes")).strong());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -227,6 +249,10 @@ fn dashboard_body(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, host_id
                 .num_columns(3)
                 .spacing([10.0, 3.0])
                 .show(ui, |ui| {
+                    ui.label(egui::RichText::new(state.t("Name")).small().weak());
+                    ui.label(egui::RichText::new(state.t("CPU %")).small().weak());
+                    ui.label(egui::RichText::new(state.t("MEM %")).small().weak());
+                    ui.end_row();
                     for p in procs.iter().take(6) {
                         ui.label(egui::RichText::new(&p.name).small());
                         ui.label(
@@ -248,12 +274,36 @@ fn dashboard_body(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, host_id
     });
 }
 
-/// Card frame using a theme-friendly translucent fill.
-fn card(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
-    egui::Frame::group(ui.style())
+/// Card frame: raised theme surface with a visible border and a soft
+/// shadow, so sections read as distinct cards on the page background.
+fn card(ui: &mut egui::Ui, theme: &crate::Theme, add: impl FnOnce(&mut egui::Ui)) {
+    let border =
+        Color32::from_rgba_unmultiplied(theme.text().r(), theme.text().g(), theme.text().b(), 26);
+    egui::Frame::new()
+        .fill(theme.panel())
+        .stroke(egui::Stroke::new(1.0, border))
         .corner_radius(8.0)
         .inner_margin(10.0)
+        .shadow(egui::epaint::Shadow {
+            offset: [0, 1],
+            blur: 5,
+            spread: 0,
+            color: Color32::from_black_alpha(28),
+        })
         .show(ui, add);
+}
+
+/// Small right-aligned value chip used in card headers.
+fn chip(ui: &mut egui::Ui, theme: &crate::Theme, text: &str) {
+    let bg =
+        Color32::from_rgba_unmultiplied(theme.text().r(), theme.text().g(), theme.text().b(), 16);
+    egui::Frame::new()
+        .fill(bg)
+        .corner_radius(4.0)
+        .inner_margin(egui::Margin::symmetric(6, 2))
+        .show(ui, |ui| {
+            ui.label(egui::RichText::new(text).small().weak());
+        });
 }
 
 /// Donut ring showing `ratio`, with centered text.

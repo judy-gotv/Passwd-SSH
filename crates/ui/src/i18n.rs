@@ -89,6 +89,10 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Action", "操作"),
     ("Actions", "操作"),
     ("Add host", "添加主机"),
+    (
+        "Add your first connection with the button below.",
+        "通过下方按钮添加首个连接。",
+    ),
     ("Address", "地址"),
     ("Agent", "代理"),
     ("All hosts", "全部主机"),
@@ -128,6 +132,7 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Close desktop", "关闭桌面"),
     ("Close tab", "关闭标签页"),
     ("Cloud repository", "云端仓库"),
+    ("Collapse", "收起"),
     ("Collapse all", "全部折叠"),
     ("Collecting metrics…", "正在采集指标…"),
     ("Coming soon in this build", "本版本即将上线"),
@@ -215,6 +220,7 @@ static ZH_CN: &[(&str, &str)] = &[
         "环境变量（每行一个 KEY=value）：",
     ),
     ("Error: {err}", "错误：{err}"),
+    ("Expand", "展开"),
     ("Export", "导出"),
     ("Export failed: {e}", "导出失败：{e}"),
     ("Export hosts…", "导出主机…"),
@@ -323,6 +329,7 @@ static ZH_CN: &[(&str, &str)] = &[
     ("New terminal tab", "新建终端标签页"),
     ("New terminal tab    Ctrl+T", "新建终端标签页    Ctrl+T"),
     ("New version available: {latest}", "有新版本可用：{latest}"),
+    ("New {p} connection", "新建{p}连接"),
     ("No active forwards", "没有活动转发"),
     ("No active terminal", "没有活动的终端"),
     ("No active terminal to split", "没有可分屏的活动终端"),
@@ -339,6 +346,8 @@ static ZH_CN: &[(&str, &str)] = &[
         "No vault yet — set a master password so credentials can be stored encrypted.",
         "还没有密码库——设置主密码后，凭据才能加密保存。",
     ),
+    ("No {p} connections yet", "暂无{p}连接"),
+    ("Note", "备注"),
     ("Note:", "备注:"),
     ("Nothing to import", "没有可导入的内容"),
     ("OK", "确定"),
@@ -581,6 +590,7 @@ static ZH_CN: &[(&str, &str)] = &[
     ("⬇ Download", "⬇ 下载"),
     ("＋ Add", "＋ 添加"),
     ("＋ Dir", "＋ 新建目录"),
+    ("＋ Group", "＋分组"),
     ("＋ New", "＋ 新建"),
     ("＋ New tab", "＋ 新标签页"),
     ("🔒 Lock vault", "🔒 锁定密码库"),
@@ -601,6 +611,10 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Action", "操作"),
     ("Actions", "操作"),
     ("Add host", "新增主機"),
+    (
+        "Add your first connection with the button below.",
+        "透過下方按鈕新增首個連線。",
+    ),
     ("Address", "地址"),
     ("Agent", "代理"),
     ("All hosts", "全部主機"),
@@ -640,6 +654,7 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Close desktop", "關閉桌面"),
     ("Close tab", "關閉標籤頁"),
     ("Cloud repository", "雲端倉庫"),
+    ("Collapse", "收起"),
     ("Collapse all", "全部摺疊"),
     ("Collecting metrics…", "正在採集指標…"),
     ("Coming soon in this build", "本版本即將上線"),
@@ -727,6 +742,7 @@ static ZH_TW: &[(&str, &str)] = &[
         "環境變數（每行一個 KEY=value）：",
     ),
     ("Error: {err}", "錯誤：{err}"),
+    ("Expand", "展開"),
     ("Export", "匯出"),
     ("Export failed: {e}", "匯出失敗：{e}"),
     ("Export hosts…", "匯出主機…"),
@@ -835,6 +851,7 @@ static ZH_TW: &[(&str, &str)] = &[
     ("New terminal tab", "新增終端標籤頁"),
     ("New terminal tab    Ctrl+T", "新增終端標籤頁    Ctrl+T"),
     ("New version available: {latest}", "有新版本可用：{latest}"),
+    ("New {p} connection", "新建{p}連線"),
     ("No active forwards", "沒有活動轉送"),
     ("No active terminal", "沒有作用中的終端"),
     ("No active terminal to split", "沒有可分割的作用中終端"),
@@ -851,6 +868,8 @@ static ZH_TW: &[(&str, &str)] = &[
         "No vault yet — set a master password so credentials can be stored encrypted.",
         "還沒有密碼庫——設定主密碼後，憑證才能加密保存。",
     ),
+    ("No {p} connections yet", "暫無{p}連線"),
+    ("Note", "備註"),
     ("Note:", "備註:"),
     ("Nothing to import", "沒有可匯入的內容"),
     ("OK", "確定"),
@@ -1093,6 +1112,7 @@ static ZH_TW: &[(&str, &str)] = &[
     ("⬇ Download", "⬇ 下載"),
     ("＋ Add", "＋ 新增"),
     ("＋ Dir", "＋ 新增目錄"),
+    ("＋ Group", "＋群組"),
     ("＋ New", "＋ 新增"),
     ("＋ New tab", "＋ 新標籤頁"),
     ("🔒 Lock vault", "🔒 鎖定密碼庫"),
@@ -1186,6 +1206,42 @@ mod tests {
                     }
                 }
                 i += 1;
+            }
+        }
+        // Second pass: header-label arrays (`for key in ["A", "B"]`) feed
+        // their literals to t() through a variable — harvest those too.
+        for file in &files {
+            let text = std::fs::read_to_string(file).expect("read rs file");
+            let mut search_from = 0;
+            while let Some(rel) = text[search_from..].find("for key in [") {
+                let start = search_from + rel;
+                let end = text[start..]
+                    .find(']')
+                    .map(|e| start + e)
+                    .unwrap_or(text.len());
+                let seg = &text[start..end];
+                let seg_bytes = seg.as_bytes();
+                let mut j = 0;
+                while j < seg_bytes.len() {
+                    if seg_bytes[j] == b'"' {
+                        j += 1;
+                        let mut key = String::new();
+                        while j < seg_bytes.len() && seg_bytes[j] != b'"' {
+                            if seg_bytes[j] == b'\\' && j + 1 < seg_bytes.len() {
+                                j += 2;
+                            } else {
+                                let ch_len = utf8_len(seg_bytes[j]);
+                                key.push_str(&seg[j..j + ch_len]);
+                                j += ch_len;
+                            }
+                        }
+                        if !key.is_empty() {
+                            keys.insert(key);
+                        }
+                    }
+                    j += 1;
+                }
+                search_from = end;
             }
         }
         assert!(keys.len() > 300, "scanner found suspiciously few keys");

@@ -12,10 +12,96 @@ pub fn left_panel(
     data: &UiData,
     events: &mut Vec<UiEvent>,
 ) {
+    if state.hosts_panel_collapsed {
+        egui::Panel::left("host_panel")
+            .default_size(40.0)
+            .size_range(40.0..=40.0)
+            .show(ui, |ui| {
+                if ui
+                    .add(egui::Button::new("☰").frame(false))
+                    .on_hover_text(state.t("Expand"))
+                    .clicked()
+                {
+                    state.hosts_panel_collapsed = false;
+                }
+            });
+        return;
+    }
     egui::Panel::left("host_panel")
         .default_size(264.0)
         .size_range(200.0..=420.0)
         .show(ui, |ui| {
+            // Tree header (Xterminal): collapse | refresh, +group, +protocol
+            ui.horizontal(|ui| {
+                if ui
+                    .add(egui::Button::new(format!("☰ {}", state.t("Collapse"))).frame(false))
+                    .clicked()
+                {
+                    state.hosts_panel_collapsed = true;
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let proto = if matches!(
+                        state.manager_protocol.as_str(),
+                        "ssh" | "rdp" | "telnet" | "vnc"
+                    ) {
+                        state.manager_protocol.clone()
+                    } else {
+                        "ssh".to_string()
+                    };
+                    if ui
+                        .small_button(format!("＋{}", super::manager::proto_label(&proto)))
+                        .on_hover_text(state.t("Add host"))
+                        .clicked()
+                    {
+                        state.manager_protocol = proto;
+                        super::manager::open_new_host(state);
+                    }
+                    if ui
+                        .small_button(state.t("＋ Group"))
+                        .on_hover_text(state.t("New group"))
+                        .clicked()
+                    {
+                        state.new_group_open = !state.new_group_open;
+                    }
+                    if ui
+                        .add(egui::Button::new("⟳").frame(false))
+                        .on_hover_text(state.t("Refresh latency"))
+                        .clicked()
+                    {
+                        events.push(UiEvent::PingHosts);
+                    }
+                });
+            });
+            if state.new_group_open {
+                ui.horizontal(|ui| {
+                    let hint = state.t("New group");
+                    let resp = ui.add(
+                        egui::TextEdit::singleline(&mut state.new_group_name)
+                            .hint_text(hint)
+                            .desired_width(f32::INFINITY),
+                    );
+                    resp.request_focus();
+                    if ui.small_button("＋").clicked() && !state.new_group_name.trim().is_empty() {
+                        events.push(UiEvent::CreateGroup(
+                            state.new_group_name.trim().to_string(),
+                        ));
+                        state.new_group_name.clear();
+                        state.new_group_open = false;
+                    }
+                    if resp.lost_focus()
+                        && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                        && !state.new_group_name.trim().is_empty()
+                    {
+                        events.push(UiEvent::CreateGroup(
+                            state.new_group_name.trim().to_string(),
+                        ));
+                        state.new_group_name.clear();
+                        state.new_group_open = false;
+                    }
+                });
+            }
+            ui.add_space(4.0);
+
             // Search
             ui.horizontal(|ui| {
                 let search_hint = state.t("Search hosts  (Ctrl+P)");
@@ -29,36 +115,25 @@ pub fn left_panel(
                     state.focus_host_search = false;
                 }
             });
-            ui.add_space(4.0);
-
-            // Action row
-            ui.horizontal(|ui| {
-                if ui.small_button(state.t("＋ Add")).clicked() {
-                    state.host_form = HostForm::blank();
-                    state.show_host_editor = true;
-                }
-                if ui.small_button(state.t("⤒ Import")).clicked() {
-                    state.confirm = Some(crate::ConfirmDialog {
-                        title: state.t("Import hosts").to_string(),
-                        message: state
-                            .t("Paste the exported JSON below, then confirm.")
-                            .to_string(),
-                        confirm_label: state.t("Import").to_string(),
-                        action: "import_hosts".to_string(),
-                    });
-                    state.import_buffer.clear();
-                }
-                if ui.small_button(state.t("⤓ Export")).clicked() {
-                    events.push(UiEvent::ExportHosts);
-                }
-            });
             ui.add_space(6.0);
 
             // Group tree ------------------------------------------------------
             ui.label(egui::RichText::new(state.t("Groups")).small().weak());
             ui.add_space(2.0);
 
-            let total = data.hosts.len();
+            // In the Manager tab the tree is scoped to the active
+            // protocol (Xterminal gives each protocol its own tree).
+            let scoped = state.main_tab == MainTab::Manager
+                && matches!(
+                    state.manager_protocol.as_str(),
+                    "ssh" | "rdp" | "telnet" | "vnc"
+                );
+            let scoped_hosts: Vec<&opsdeck_storage::models::Host> = data
+                .hosts
+                .iter()
+                .filter(|h| !scoped || h.protocol == state.manager_protocol)
+                .collect();
+            let total = scoped_hosts.len();
             if tree_row(
                 ui,
                 "🗂",
@@ -69,7 +144,7 @@ pub fn left_panel(
                 state.group_filter = GroupFilter::All;
                 state.main_tab = MainTab::Manager;
             }
-            let fav_count = data.hosts.iter().filter(|h| h.favorite).count();
+            let fav_count = scoped_hosts.iter().filter(|h| h.favorite).count();
             if tree_row(
                 ui,
                 "★",
@@ -80,8 +155,7 @@ pub fn left_panel(
                 state.group_filter = GroupFilter::Favorites;
                 state.main_tab = MainTab::Manager;
             }
-            let recent_count = data
-                .hosts
+            let recent_count = scoped_hosts
                 .iter()
                 .filter(|h| h.last_connected_at.is_some())
                 .count();
@@ -95,7 +169,7 @@ pub fn left_panel(
                 state.group_filter = GroupFilter::Recent;
                 state.main_tab = MainTab::Manager;
             }
-            let freq_count = data.hosts.iter().filter(|h| h.connect_count > 0).count();
+            let freq_count = scoped_hosts.iter().filter(|h| h.connect_count > 0).count();
             if tree_row(
                 ui,
                 "🔥",
@@ -109,11 +183,13 @@ pub fn left_panel(
             ui.add_space(4.0);
 
             for group in data.groups {
-                let count = data
-                    .hosts
+                let count = scoped_hosts
                     .iter()
                     .filter(|h| h.group_id.as_deref() == Some(group.id.as_str()))
                     .count();
+                if scoped && count == 0 {
+                    continue;
+                }
                 let selected = state.group_filter == GroupFilter::Group(group.id.clone());
                 let expanded = state.tree_expanded.contains(&group.id);
                 let mut delete = false;
@@ -143,8 +219,7 @@ pub fn left_panel(
                     }
                 });
                 if expanded {
-                    for host in data
-                        .hosts
+                    for host in scoped_hosts
                         .iter()
                         .filter(|h| h.group_id.as_deref() == Some(group.id.as_str()))
                     {
@@ -175,32 +250,6 @@ pub fn left_panel(
                     });
                 }
             }
-
-            // New group inline
-            ui.add_space(2.0);
-            ui.horizontal(|ui| {
-                let hint = state.t("New group");
-                let resp = ui.add(
-                    egui::TextEdit::singleline(&mut state.new_group_name)
-                        .hint_text(hint)
-                        .desired_width(160.0),
-                );
-                if ui.small_button("＋").clicked() && !state.new_group_name.trim().is_empty() {
-                    events.push(UiEvent::CreateGroup(
-                        state.new_group_name.trim().to_string(),
-                    ));
-                    state.new_group_name.clear();
-                }
-                if resp.lost_focus()
-                    && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                    && !state.new_group_name.trim().is_empty()
-                {
-                    events.push(UiEvent::CreateGroup(
-                        state.new_group_name.trim().to_string(),
-                    ));
-                    state.new_group_name.clear();
-                }
-            });
 
             ui.add_space(8.0);
             ui.separator();

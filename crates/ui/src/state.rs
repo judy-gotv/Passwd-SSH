@@ -249,6 +249,10 @@ pub struct UiState {
     pub pending_batch_delete: Vec<String>,
     /// Expanded groups in the left tree (host leaves visible).
     pub tree_expanded: std::collections::HashSet<String>,
+    /// Whether the left host panel is collapsed to a slim strip.
+    pub hosts_panel_collapsed: bool,
+    /// Whether the inline new-group input is open in the tree header.
+    pub new_group_open: bool,
     pub group_filter: GroupFilter,
     pub new_group_name: String,
     pub host_search: String,
@@ -357,6 +361,8 @@ impl UiState {
             manager_info_on: true,
             pending_batch_delete: Vec::new(),
             tree_expanded: std::collections::HashSet::new(),
+            hosts_panel_collapsed: false,
+            new_group_open: false,
             group_filter: GroupFilter::All,
             new_group_name: String::new(),
             host_search: String::new(),
