@@ -21,7 +21,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 if ui.selectable_label(active, title).clicked() {
                     state.active_tab = i;
                 }
-                if ui.small_button("✕").on_hover_text("Close tab").clicked() {
+                if ui
+                    .small_button("✕")
+                    .on_hover_text(state.t("Close tab"))
+                    .clicked()
+                {
                     let sessions: Vec<SessionId> = tab.panes.iter().map(|p| p.session).collect();
                     for s in sessions {
                         events.push(UiEvent::ClosePane(s));
@@ -30,34 +34,34 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 ui.separator();
             }
             if state.tabs.is_empty() {
-                ui.label(egui::RichText::new("No terminal tabs").weak());
+                ui.label(egui::RichText::new(state.t("No terminal tabs")).weak());
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .small_button("🔍")
-                    .on_hover_text("Search terminal (Ctrl+F)")
+                    .on_hover_text(state.t("Search terminal (Ctrl+F)"))
                     .clicked()
                 {
                     toggle_search(state);
                 }
                 if ui
                     .small_button("⬒")
-                    .on_hover_text("Split left/right (Ctrl+Shift+E)")
+                    .on_hover_text(state.t("Split left/right (Ctrl+Shift+E)"))
                     .clicked()
                 {
                     events.push(UiEvent::SplitPane { vertical: false });
                 }
                 if ui
                     .small_button("⬓")
-                    .on_hover_text("Split up/down (Ctrl+Shift+O)")
+                    .on_hover_text(state.t("Split up/down (Ctrl+Shift+O)"))
                     .clicked()
                 {
                     events.push(UiEvent::SplitPane { vertical: true });
                 }
                 if ui
                     .small_button("＋")
-                    .on_hover_text("New tab (Ctrl+T)")
+                    .on_hover_text(state.t("New tab (Ctrl+T)"))
                     .clicked()
                 {
                     new_tab_for_selection(state, events);
@@ -71,10 +75,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
         if state.tabs.is_empty() {
             ui.centered_and_justified(|ui| {
                 ui.vertical_centered(|ui| {
-                    ui.label(egui::RichText::new("No open sessions").size(18.0));
-                    ui.label("Select a host on the left and press ▶ or double-click to connect.");
+                    ui.label(egui::RichText::new(state.t("No open sessions")).size(18.0));
+                    ui.label(
+                        state
+                            .t("Select a host on the left and press ▶ or double-click to connect."),
+                    );
                     ui.add_space(8.0);
-                    if ui.button("＋ New tab").clicked() {
+                    if ui.button(state.t("＋ New tab")).clicked() {
                         new_tab_for_selection(state, events);
                     }
                 });
@@ -151,7 +158,7 @@ fn new_tab_for_selection(state: &mut UiState, events: &mut Vec<UiEvent>) {
     if let Some(host_id) = state.selected_host.clone() {
         events.push(UiEvent::NewTabForHost(host_id));
     } else {
-        state.toast("Select a host on the left first", true);
+        state.toast(state.t("Select a host on the left first"), true);
     }
 }
 
@@ -189,10 +196,11 @@ fn search_bar(
                 .inner_margin(8.0)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
+                        let hint = state.t("Search terminal");
                         let query = state.search_query.entry(session).or_default();
                         let resp = ui.add(
                             egui::TextEdit::singleline(query)
-                                .hint_text("Search terminal")
+                                .hint_text(hint)
                                 .desired_width(200.0),
                         );
                         resp.request_focus();
@@ -442,11 +450,11 @@ fn pane_widget(
                 let msg = info
                     .last_error
                     .clone()
-                    .unwrap_or_else(|| "Session closed.".to_string());
+                    .unwrap_or_else(|| state.t("Session closed.").to_string());
                 painter.text(
                     Pos2::new(rect.left() + 8.0, rect.bottom() - cell_h - 4.0),
                     Align2::LEFT_TOP,
-                    format!("— {msg}  [press ↻ to reconnect]"),
+                    state.tf("— {msg} [press ↻ to reconnect]", &[("msg", &msg)]),
                     font_id.clone(),
                     Color32::from_rgb(255, 150, 120),
                 );
@@ -457,7 +465,7 @@ fn pane_widget(
         painter.text(
             Pos2::new(rect.left() + 12.0, rect.top() + 12.0),
             Align2::LEFT_TOP,
-            format!("Connecting to {title}…"),
+            state.tf("Connecting to {title}…", &[("title", title)]),
             font_id.clone(),
             theme.weak_text(),
         );

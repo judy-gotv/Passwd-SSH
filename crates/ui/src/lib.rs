@@ -16,10 +16,13 @@ use opsdeck_storage::models::{
     CredentialMeta, Host, HostGroup, MetricSnapshot, Snippet, TransferTask,
 };
 
+pub mod i18n;
 pub mod shortcuts;
 pub mod state;
 pub mod theme;
 pub mod views;
+
+pub use i18n::Language;
 
 pub use state::{
     ConfirmDialog, HostForm, MainTab, Pane, Screen, Selection, SnippetForm, TermTab, Toast, UiState,
@@ -117,6 +120,7 @@ pub enum UiEvent {
     SetSyncKind(String),
     // settings
     SetTheme(String),
+    SetLanguage(String),
     SetFontSize(f32),
     SetTerminalFontSize(f32),
     CheckUpdate,

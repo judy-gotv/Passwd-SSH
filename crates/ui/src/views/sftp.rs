@@ -3,20 +3,20 @@
 
 use opsdeck_sftp::FileKind;
 
-use crate::{UiData, UiEvent, UiState};
+use crate::{Language, UiData, UiEvent, UiState};
 
 /// Draw the Files tab.
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
     egui::CentralPanel::default().show(ui, |ui| {
         // Host picker
         ui.horizontal(|ui| {
-            ui.label("Host:");
+            ui.label(state.t("Host:"));
             let current = state
                 .sftp_host
                 .clone()
                 .and_then(|id| data.host(&id))
                 .map(|h| h.name.clone())
-                .unwrap_or_else(|| "— select —".to_string());
+                .unwrap_or_else(|| state.t("— select —").to_string());
             egui::ComboBox::from_id_salt("sftp_host_picker")
                 .selected_text(current)
                 .show_ui(ui, |ui| {
@@ -37,7 +37,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                         }
                     }
                 });
-            if ui.small_button("🔄").on_hover_text("Refresh").clicked()
+            if ui
+                .small_button("🔄")
+                .on_hover_text(state.t("Refresh"))
+                .clicked()
                 && let Some(host_id) = state.sftp_host.clone()
             {
                 let path = state.sftp_path(&host_id);
@@ -48,7 +51,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
 
         let Some(host_id) = state.sftp_host.clone() else {
             ui.centered_and_justified(|ui| {
-                ui.label(egui::RichText::new("Select a host to browse its files.").weak());
+                ui.label(egui::RichText::new(state.t("Select a host to browse its files.")).weak());
             });
             return;
         };
@@ -58,7 +61,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
         ui.horizontal(|ui| {
             if ui
                 .small_button("⬆")
-                .on_hover_text("Parent directory")
+                .on_hover_text(state.t("Parent directory"))
                 .clicked()
             {
                 let parent = parent_of(&path);
@@ -78,23 +81,25 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                     path: path_edit,
                 });
             }
-            if ui.small_button("Go").clicked() {
+            if ui.small_button(state.t("Go")).clicked() {
                 state.sftp_paths.insert(host_id.clone(), path.clone());
                 events.push(UiEvent::SftpNavigate {
                     host_id: host_id.clone(),
                     path: path.clone(),
                 });
             }
-            if ui.small_button("＋ Dir").clicked() {
+            if ui.small_button(state.t("＋ Dir")).clicked() {
                 state.sftp_mkdir_open = true;
                 state.sftp_new_dir_name.clear();
             }
         });
         if state.sftp_mkdir_open {
             ui.horizontal(|ui| {
-                ui.label("New directory:");
+                ui.label(state.t("New directory:"));
                 ui.text_edit_singleline(&mut state.sftp_new_dir_name);
-                if ui.small_button("Create").clicked() && !state.sftp_new_dir_name.is_empty() {
+                if ui.small_button(state.t("Create")).clicked()
+                    && !state.sftp_new_dir_name.is_empty()
+                {
                     let new_path = join(&path, &state.sftp_new_dir_name);
                     events.push(UiEvent::SftpMkdir {
                         host_id: host_id.clone(),
@@ -102,7 +107,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                     });
                     state.sftp_mkdir_open = false;
                 }
-                if ui.small_button("Cancel").clicked() {
+                if ui.small_button(state.t("Cancel")).clicked() {
                     state.sftp_mkdir_open = false;
                 }
             });
@@ -114,13 +119,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
         if listing.map(|l| l.loading).unwrap_or(false) {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label("Loading…");
+                ui.label(state.t("Loading…"));
             });
         }
         if let Some(err) = listing.and_then(|l| l.error.clone()) {
             ui.colored_label(
                 egui::Color32::from_rgb(255, 120, 120),
-                format!("Error: {err}"),
+                state.tf("Error: {err}", &[("err", &err)]),
             );
         }
 
@@ -129,11 +134,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 .num_columns(5)
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label(egui::RichText::new("Name").strong());
-                    ui.label(egui::RichText::new("Size").strong());
-                    ui.label(egui::RichText::new("Modified").strong());
-                    ui.label(egui::RichText::new("Perms").strong());
-                    ui.label(egui::RichText::new("Actions").strong());
+                    ui.label(egui::RichText::new(state.t("Name")).strong());
+                    ui.label(egui::RichText::new(state.t("Size")).strong());
+                    ui.label(egui::RichText::new(state.t("Modified")).strong());
+                    ui.label(egui::RichText::new(state.t("Perms")).strong());
+                    ui.label(egui::RichText::new(state.t("Actions")).strong());
                     ui.end_row();
 
                     if let Some(listing) = listing {
@@ -163,7 +168,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                             ui.label(entry.permissions.clone().unwrap_or_else(|| "—".to_string()));
                             ui.horizontal(|ui| {
                                 if !entry.is_dir()
-                                    && ui.small_button("⬇").on_hover_text("Download").clicked()
+                                    && ui
+                                        .small_button("⬇")
+                                        .on_hover_text(state.t("Download"))
+                                        .clicked()
                                 {
                                     let local = if state.sftp_download_local.is_empty() {
                                         default_download_path(&entry.name)
@@ -176,15 +184,24 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                                         local,
                                     });
                                 }
-                                if ui.small_button("✎").on_hover_text("Rename").clicked() {
+                                if ui
+                                    .small_button("✎")
+                                    .on_hover_text(state.t("Rename"))
+                                    .clicked()
+                                {
                                     state.sftp_rename_from = Some(entry.path.clone());
                                     state.sftp_rename_to = entry.name.clone();
                                 }
-                                if ui.small_button("🗑").on_hover_text("Delete").clicked() {
+                                if ui
+                                    .small_button("🗑")
+                                    .on_hover_text(state.t("Delete"))
+                                    .clicked()
+                                {
                                     state.confirm = Some(crate::ConfirmDialog {
-                                        title: "Delete".to_string(),
-                                        message: format!("Delete “{}”?", entry.path),
-                                        confirm_label: "Delete".to_string(),
+                                        title: state.t("Delete").to_string(),
+                                        message: state
+                                            .tf("Delete “{path}”?", &[("path", &entry.path)]),
+                                        confirm_label: state.t("Delete").to_string(),
                                         action: format!("sftp_delete:{}:{}", host_id, entry.path),
                                     });
                                 }
@@ -198,9 +215,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
             if let Some(from) = state.sftp_rename_from.clone() {
                 ui.separator();
                 ui.horizontal(|ui| {
-                    ui.label(format!("Rename {} →", from));
+                    ui.label(state.tf("Rename {from} →", &[("from", &from)]));
                     ui.text_edit_singleline(&mut state.sftp_rename_to);
-                    if ui.small_button("OK").clicked() {
+                    if ui.small_button(state.t("OK")).clicked() {
                         let to = join(&parent_of(&from), &state.sftp_rename_to);
                         events.push(UiEvent::SftpRename {
                             host_id: host_id.clone(),
@@ -209,7 +226,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                         });
                         state.sftp_rename_from = None;
                     }
-                    if ui.small_button("Cancel").clicked() {
+                    if ui.small_button(state.t("Cancel")).clicked() {
                         state.sftp_rename_from = None;
                     }
                 });
@@ -218,13 +235,16 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
             // Upload row
             ui.separator();
             ui.horizontal(|ui| {
-                ui.label("Upload local file:");
+                ui.label(state.t("Upload local file:"));
+                let upload_hint = state.t("/path/to/local/file");
                 ui.add(
                     egui::TextEdit::singleline(&mut state.sftp_upload_local)
-                        .hint_text("/path/to/local/file")
+                        .hint_text(upload_hint)
                         .desired_width(260.0),
                 );
-                if ui.small_button("⬆ Upload").clicked() && !state.sftp_upload_local.is_empty() {
+                if ui.small_button(state.t("⬆ Upload")).clicked()
+                    && !state.sftp_upload_local.is_empty()
+                {
                     let local = state.sftp_upload_local.clone();
                     let file_name = local.rsplit('/').next().unwrap_or("upload");
                     let remote = join(&path, file_name);
@@ -237,10 +257,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 }
             });
             ui.horizontal(|ui| {
-                ui.label("Download dir:");
+                ui.label(state.t("Download dir:"));
+                let dl_hint = state.t("default: ~/Downloads");
                 ui.add(
                     egui::TextEdit::singleline(&mut state.sftp_download_local)
-                        .hint_text("default: ~/Downloads")
+                        .hint_text(dl_hint)
                         .desired_width(260.0),
                 );
             });
@@ -248,14 +269,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
 
         // Transfer queue
         ui.separator();
-        ui.label(egui::RichText::new("Transfers").strong());
+        ui.label(egui::RichText::new(state.t("Transfers")).strong());
         let host_transfers: Vec<_> = data
             .transfers
             .iter()
             .filter(|t| t.host_id == host_id)
             .collect();
         if host_transfers.is_empty() {
-            ui.label(egui::RichText::new("No transfers yet.").small().weak());
+            ui.label(
+                egui::RichText::new(state.t("No transfers yet."))
+                    .small()
+                    .weak(),
+            );
         } else {
             egui::ScrollArea::vertical()
                 .max_height(160.0)
@@ -276,21 +301,32 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                                     .desired_width(140.0)
                                     .show_percentage(),
                             );
-                            ui.label(status_text(t));
+                            ui.label(status_text(state.language, t));
                             match t.status.as_str() {
                                 "running" => {
-                                    if ui.small_button("⏸").on_hover_text("Pause").clicked() {
+                                    if ui
+                                        .small_button("⏸")
+                                        .on_hover_text(state.t("Pause"))
+                                        .clicked()
+                                    {
                                         events.push(UiEvent::TransferPause(t.id.clone()));
                                     }
                                 }
                                 "paused" | "failed"
-                                    if ui.small_button("▶").on_hover_text("Retry").clicked() =>
+                                    if ui
+                                        .small_button("▶")
+                                        .on_hover_text(state.t("Retry"))
+                                        .clicked() =>
                                 {
                                     events.push(UiEvent::TransferRetry(t.id.clone()));
                                 }
                                 _ => {}
                             }
-                            if ui.small_button("✕").on_hover_text("Cancel").clicked() {
+                            if ui
+                                .small_button("✕")
+                                .on_hover_text(state.t("Cancel"))
+                                .clicked()
+                            {
                                 events.push(UiEvent::TransferCancel(t.id.clone()));
                             }
                         });
@@ -307,7 +343,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
     });
 }
 
-fn status_text(t: &opsdeck_storage::models::TransferTask) -> String {
+fn status_text(lang: Language, t: &opsdeck_storage::models::TransferTask) -> String {
     match t.status.as_str() {
         "running" => format!(
             "{} / {}",
@@ -316,10 +352,10 @@ fn status_text(t: &opsdeck_storage::models::TransferTask) -> String {
                 .map(|b| human_size(b as u64))
                 .unwrap_or_else(|| "?".to_string())
         ),
-        "paused" => "paused".to_string(),
-        "done" => "done".to_string(),
-        "failed" => "failed".to_string(),
-        "canceled" => "canceled".to_string(),
+        "paused" => lang.tr("paused").to_string(),
+        "done" => lang.tr("done").to_string(),
+        "failed" => lang.tr("failed").to_string(),
+        "canceled" => lang.tr("canceled").to_string(),
         s => s.to_string(),
     }
 }

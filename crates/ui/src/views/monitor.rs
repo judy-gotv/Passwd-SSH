@@ -9,13 +9,13 @@ use crate::{UiData, UiEvent, UiState};
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
     egui::CentralPanel::default().show(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Host:");
+            ui.label(state.t("Host:"));
             let current = state
                 .monitor_host
                 .clone()
                 .and_then(|id| data.host(&id))
                 .map(|h| h.name.clone())
-                .unwrap_or_else(|| "— select —".to_string());
+                .unwrap_or_else(|| state.t("— select —").to_string());
             egui::ComboBox::from_id_salt("monitor_host_picker")
                 .selected_text(current)
                 .show_ui(ui, |ui| {
@@ -31,14 +31,19 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                         }
                     }
                 });
-            ui.checkbox(&mut state.monitor_auto, "Auto refresh");
-            ui.label(egui::RichText::new("Linux hosts via /proc").small().weak());
+            let auto_refresh = state.t("Auto refresh");
+            ui.checkbox(&mut state.monitor_auto, auto_refresh);
+            ui.label(
+                egui::RichText::new(state.t("Linux hosts via /proc"))
+                    .small()
+                    .weak(),
+            );
         });
         ui.separator();
 
         let Some(host_id) = state.monitor_host.clone() else {
             ui.centered_and_justified(|ui| {
-                ui.label(egui::RichText::new("Select a host to monitor.").weak());
+                ui.label(egui::RichText::new(state.t("Select a host to monitor.")).weak());
             });
             return;
         };
@@ -51,11 +56,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
             ui.centered_and_justified(|ui| {
                 ui.vertical_centered(|ui| {
                     ui.spinner();
-                    ui.label("Collecting metrics…");
+                    ui.label(state.t("Collecting metrics…"));
                     ui.label(
-                        egui::RichText::new(
+                        egui::RichText::new(state.t(
                             "The host must be connected. Metrics are polled every few seconds.",
-                        )
+                        ))
                         .small()
                         .weak(),
                     );
@@ -70,7 +75,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
         ui.horizontal(|ui| {
             stat_card(
                 ui,
-                "CPU",
+                state.t("CPU"),
                 latest
                     .cpu_percent
                     .map(|v| format!("{v:.1}%"))
@@ -80,15 +85,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 (Some(u), Some(t)) if t > 0 => format!("{:.1}%", u as f64 / t as f64 * 100.0),
                 _ => "—".to_string(),
             };
-            stat_card(ui, "Memory", mem);
+            stat_card(ui, state.t("Memory"), mem);
             let disk = match (latest.disk_used_bytes, latest.disk_total_bytes) {
                 (Some(u), Some(t)) if t > 0 => format!("{:.1}%", u as f64 / t as f64 * 100.0),
                 _ => "—".to_string(),
             };
-            stat_card(ui, "Disk /", disk);
+            stat_card(ui, state.t("Disk /"), disk);
             stat_card(
                 ui,
-                "Load",
+                state.t("Load"),
                 latest
                     .load_1
                     .map(|v| format!("{v:.2}"))
@@ -100,7 +105,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
         // Charts
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
-                ui.label("CPU %");
+                ui.label(state.t("CPU %"));
                 let vals: Vec<f32> = snapshots
                     .iter()
                     .filter_map(|s| s.cpu_percent.map(|v| v as f32))
@@ -108,7 +113,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 line_chart(ui, &vals, Color32::from_rgb(78, 193, 255), 0.0, 100.0);
             });
             ui.vertical(|ui| {
-                ui.label("Memory %");
+                ui.label(state.t("Memory %"));
                 let vals: Vec<f32> = snapshots
                     .iter()
                     .filter_map(|s| match (s.memory_used_bytes, s.memory_total_bytes) {
@@ -122,15 +127,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
         ui.add_space(8.0);
 
         // Processes
-        ui.label(egui::RichText::new("Top processes").strong());
+        ui.label(egui::RichText::new(state.t("Top processes")).strong());
         egui::Grid::new("proc_grid")
             .num_columns(4)
             .striped(true)
             .show(ui, |ui| {
-                ui.label(egui::RichText::new("PID").strong());
-                ui.label(egui::RichText::new("Name").strong());
-                ui.label(egui::RichText::new("CPU %").strong());
-                ui.label(egui::RichText::new("MEM %").strong());
+                ui.label(egui::RichText::new(state.t("PID")).strong());
+                ui.label(egui::RichText::new(state.t("Name")).strong());
+                ui.label(egui::RichText::new(state.t("CPU %")).strong());
+                ui.label(egui::RichText::new(state.t("MEM %")).strong());
                 ui.end_row();
                 if let Some(procs) = data.processes.get(&host_id) {
                     for p in procs.iter().take(20) {

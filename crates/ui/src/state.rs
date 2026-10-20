@@ -12,6 +12,8 @@ use std::time::{Duration, Instant};
 use opsdeck_ssh::SessionId;
 use opsdeck_terminal::Terminal;
 
+use crate::i18n::Language;
+
 /// Which top-level screen is shown.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Screen {
@@ -201,6 +203,7 @@ pub struct UiState {
     // settings
     pub theme_name: String,
     pub applied_theme: String,
+    pub language: Language,
     pub settings_pw_old: String,
     pub settings_pw_new: String,
     pub settings_pw_confirm: String,
@@ -256,8 +259,9 @@ impl UiState {
             forward_bind: "127.0.0.1:8080".to_string(),
             forward_remote_host: String::new(),
             forward_remote_port: String::new(),
-            theme_name: "Dark".to_string(),
+            theme_name: "Tokyo Night".to_string(),
             applied_theme: String::new(),
+            language: Language::default(),
             settings_pw_old: String::new(),
             settings_pw_new: String::new(),
             settings_pw_confirm: String::new(),
@@ -275,6 +279,19 @@ impl UiState {
             until: Instant::now() + Duration::from_secs(4),
             error,
         });
+    }
+
+    /// Translate a UI string into the current language.
+    ///
+    /// Returns `&'static str`, so the result never borrows `self` — it can be
+    /// used freely even while other fields are mutably borrowed.
+    pub fn t(&self, key: &'static str) -> &'static str {
+        self.language.tr(key)
+    }
+
+    /// Translate a template with `{name}` placeholders.
+    pub fn tf(&self, key: &'static str, args: &[(&str, &str)]) -> String {
+        self.language.tr_fmt(key, args)
     }
 
     /// Drop expired toasts.

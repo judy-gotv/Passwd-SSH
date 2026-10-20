@@ -7,43 +7,45 @@ use crate::{MainTab, UiData, UiEvent, UiState};
 pub fn top_bar(ui: &mut egui::Ui, state: &mut UiState, events: &mut Vec<UiEvent>) {
     egui::Panel::top("menu_bar").show(ui, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button("File", |ui| {
-                if ui.button("New terminal tab    Ctrl+T").clicked() {
+            ui.menu_button(state.t("File"), |ui| {
+                if ui.button(state.t("New terminal tab    Ctrl+T")).clicked() {
                     new_tab(state, events);
                     ui.close();
                 }
-                if ui.button("Import hosts…").clicked() {
+                if ui.button(state.t("Import hosts…")).clicked() {
                     state.confirm = Some(crate::ConfirmDialog {
-                        title: "Import hosts".to_string(),
-                        message: "Paste the exported JSON below, then confirm.".to_string(),
-                        confirm_label: "Import".to_string(),
+                        title: state.t("Import hosts").to_string(),
+                        message: state
+                            .t("Paste the exported JSON below, then confirm.")
+                            .to_string(),
+                        confirm_label: state.t("Import").to_string(),
                         action: "import_hosts".to_string(),
                     });
                     state.import_buffer.clear();
                     ui.close();
                 }
-                if ui.button("Export hosts…").clicked() {
+                if ui.button(state.t("Export hosts…")).clicked() {
                     events.push(UiEvent::ExportHosts);
                     ui.close();
                 }
                 ui.separator();
-                if ui.button("🔒 Lock vault").clicked() {
+                if ui.button(state.t("🔒 Lock vault")).clicked() {
                     events.push(UiEvent::LockVault);
                     ui.close();
                 }
-                if ui.button("Quit").clicked() {
+                if ui.button(state.t("Quit")).clicked() {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                     ui.close();
                 }
             });
 
-            ui.menu_button("View", |ui| {
+            ui.menu_button(state.t("View"), |ui| {
                 for (tab, label) in [
-                    (MainTab::Terminal, "Terminal"),
-                    (MainTab::Files, "Files (SFTP)"),
-                    (MainTab::Monitor, "Monitor"),
-                    (MainTab::Snippets, "Snippets"),
-                    (MainTab::Settings, "Settings"),
+                    (MainTab::Terminal, state.t("Terminal")),
+                    (MainTab::Files, state.t("Files (SFTP)")),
+                    (MainTab::Monitor, state.t("Monitor")),
+                    (MainTab::Snippets, state.t("Snippets")),
+                    (MainTab::Settings, state.t("Settings")),
                 ] {
                     if ui.selectable_label(state.main_tab == tab, label).clicked() {
                         state.main_tab = tab;
@@ -51,35 +53,41 @@ pub fn top_bar(ui: &mut egui::Ui, state: &mut UiState, events: &mut Vec<UiEvent>
                     }
                 }
                 ui.separator();
-                ui.menu_button("Theme", |ui| {
-                    for name in ["Dark", "Light"] {
+                ui.menu_button(state.t("Theme"), |ui| {
+                    for theme in crate::theme::Theme::builtins() {
                         if ui
-                            .selectable_label(state.theme_name == name, name)
+                            .selectable_label(state.theme_name == theme.name, &theme.name)
                             .clicked()
                         {
-                            state.theme_name = name.to_string();
-                            events.push(UiEvent::SetTheme(name.to_string()));
+                            state.theme_name = theme.name.clone();
+                            events.push(UiEvent::SetTheme(theme.name.clone()));
                             ui.close();
                         }
                     }
                 });
             });
 
-            ui.menu_button("Session", |ui| {
-                if ui.button("Split left/right    Ctrl+Shift+E").clicked() {
+            ui.menu_button(state.t("Session"), |ui| {
+                if ui
+                    .button(state.t("Split left/right    Ctrl+Shift+E"))
+                    .clicked()
+                {
                     events.push(UiEvent::SplitPane { vertical: false });
                     ui.close();
                 }
-                if ui.button("Split up/down    Ctrl+Shift+O").clicked() {
+                if ui
+                    .button(state.t("Split up/down    Ctrl+Shift+O"))
+                    .clicked()
+                {
                     events.push(UiEvent::SplitPane { vertical: true });
                     ui.close();
                 }
                 ui.separator();
-                if ui.button("Port forwarding…").clicked() {
+                if ui.button(state.t("Port forwarding…")).clicked() {
                     state.show_forward_dialog = true;
                     ui.close();
                 }
-                if ui.button("Reconnect session").clicked() {
+                if ui.button(state.t("Reconnect session")).clicked() {
                     if let Some(pane) = state.active_pane().cloned() {
                         events.push(UiEvent::ReconnectSession(pane.session));
                     }
@@ -87,12 +95,12 @@ pub fn top_bar(ui: &mut egui::Ui, state: &mut UiState, events: &mut Vec<UiEvent>
                 }
             });
 
-            ui.menu_button("Help", |ui| {
-                if ui.button("Keyboard shortcuts").clicked() {
+            ui.menu_button(state.t("Help"), |ui| {
+                if ui.button(state.t("Keyboard shortcuts")).clicked() {
                     state.main_tab = MainTab::Settings;
                     ui.close();
                 }
-                if ui.button("Check for updates").clicked() {
+                if ui.button(state.t("Check for updates")).clicked() {
                     events.push(UiEvent::CheckUpdate);
                     ui.close();
                 }
@@ -101,10 +109,10 @@ pub fn top_bar(ui: &mut egui::Ui, state: &mut UiState, events: &mut Vec<UiEvent>
             // Right side: tab switcher
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 for (tab, label) in [
-                    (MainTab::Terminal, "Terminal"),
-                    (MainTab::Files, "Files"),
-                    (MainTab::Monitor, "Monitor"),
-                    (MainTab::Snippets, "Snippets"),
+                    (MainTab::Terminal, state.t("Terminal")),
+                    (MainTab::Files, state.t("Files")),
+                    (MainTab::Monitor, state.t("Monitor")),
+                    (MainTab::Snippets, state.t("Snippets")),
                     (MainTab::Settings, "⚙"),
                 ] {
                     if ui.selectable_label(state.main_tab == tab, label).clicked() {
@@ -131,23 +139,26 @@ pub fn central(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &m
 pub fn status_bar(ui: &mut egui::Ui, state: &mut UiState, data: &UiData) {
     egui::Panel::bottom("status_bar").show(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.label(format!("{} session(s)", data.sessions.len()));
+            ui.label(state.tf("{n} session(s)", &[("n", &data.sessions.len().to_string())]));
             if data.sessions.is_empty() {
-                ui.label(egui::RichText::new("not connected").weak());
+                ui.label(egui::RichText::new(state.t("not connected")).weak());
             }
             if !data.key_prompts.is_empty() {
                 ui.colored_label(
                     egui::Color32::from_rgb(255, 200, 90),
-                    format!("⚠ {} host key approval(s) pending", data.key_prompts.len()),
+                    state.tf(
+                        "⚠ {n} host key approval(s) pending",
+                        &[("n", &data.key_prompts.len().to_string())],
+                    ),
                 );
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if data.update.available {
                     ui.colored_label(
                         egui::Color32::from_rgb(120, 220, 120),
-                        format!(
-                            "⬆ Update available: {}",
-                            data.update.latest.clone().unwrap_or_default()
+                        state.tf(
+                            "⬆ Update available: {latest}",
+                            &[("latest", &data.update.latest.clone().unwrap_or_default())],
                         ),
                     );
                 }
@@ -156,14 +167,17 @@ pub fn status_bar(ui: &mut egui::Ui, state: &mut UiState, data: &UiData) {
                         .sync
                         .last_summary
                         .clone()
-                        .unwrap_or_else(|| "sync on".to_string());
+                        .unwrap_or_else(|| state.t("sync on").to_string());
                     ui.label(egui::RichText::new(format!("🔄 {txt}")).small().weak());
                 }
                 if !data.forwards.is_empty() {
                     ui.label(
-                        egui::RichText::new(format!("⇄ {} forward(s)", data.forwards.len()))
-                            .small()
-                            .weak(),
+                        egui::RichText::new(state.tf(
+                            "⇄ {n} forward(s)",
+                            &[("n", &data.forwards.len().to_string())],
+                        ))
+                        .small()
+                        .weak(),
                     );
                 }
                 let _ = state;
@@ -238,7 +252,7 @@ fn new_tab(state: &mut UiState, events: &mut Vec<UiEvent>) {
     if let Some(host_id) = state.selected_host.clone() {
         events.push(UiEvent::NewTabForHost(host_id));
     } else {
-        state.toast("Select a host on the left first", true);
+        state.toast(state.t("Select a host on the left first"), true);
     }
 }
 

@@ -25,8 +25,8 @@ use opsdeck_storage::models::{
 };
 use opsdeck_sync::{FileRemote, HttpRemote, Remote, SyncEngine, SyncSummary, device_id};
 use opsdeck_ui::{
-    ForwardView, KeyPromptView, MainTab, Screen, SftpListing, SyncStatusView, TermTab, Theme,
-    UiData, UiEvent, UiState, UpdateStatusView,
+    ForwardView, KeyPromptView, Language, MainTab, Screen, SftpListing, SyncStatusView, TermTab,
+    Theme, UiData, UiEvent, UiState, UpdateStatusView,
 };
 use opsdeck_vault::{EncryptedBlob, SecretBytes, SecretString, Vault, VaultError, VaultVerifier};
 use tokio::sync::{RwLock, mpsc, oneshot};
@@ -310,9 +310,17 @@ impl OpsDeckApp {
 
         // Theme.
         let theme = match storage.get_setting("ui.theme").await? {
-            Some(json) => serde_json::from_str(&json).unwrap_or_else(|_| Theme::dark_default()),
-            None => Theme::dark_default(),
+            Some(json) => serde_json::from_str(&json).unwrap_or_else(|_| Theme::tokyo_night()),
+            None => Theme::tokyo_night(),
         };
+
+        // Language (default: Simplified Chinese).
+        let language = storage
+            .get_setting("ui.language")
+            .await?
+            .as_deref()
+            .map(Language::from_code)
+            .unwrap_or_default();
 
         // Vault state → initial screen.
         let verifier_path = config_dir.join("vault.json");
@@ -322,6 +330,7 @@ impl OpsDeckApp {
             first_run: !has_vault,
         };
         state.theme_name = theme.name.clone();
+        state.language = language;
 
         // Sync settings → view.
         let sync_kind = storage
@@ -482,8 +491,16 @@ impl OpsDeckApp {
                 }
                 QueueEvent::Finished { task_id, result } => {
                     match result {
-                        Ok(()) => self.state.toast(format!("Transfer {task_id} done"), false),
-                        Err(e) => self.state.toast(format!("Transfer failed: {e}"), true),
+                        Ok(()) => self.state.toast(
+                            self.state
+                                .tf("Transfer {task_id} done", &[("task_id", &task_id)]),
+                            false,
+                        ),
+                        Err(e) => self.state.toast(
+                            self.state
+                                .tf("Transfer failed: {e}", &[("e", &e.to_string())]),
+                            true,
+                        ),
                     }
                     self.cache_dirty = true;
                 }
@@ -521,14 +538,17 @@ impl OpsDeckApp {
                     host: String::new(),
                     port: 0,
                     state: opsdeck_ssh::SessionState::Disconnected,
-                    last_error: Some("Connection closed.".to_string()),
+                    last_error: Some(self.state.t("Connection closed.").to_string()),
                     via: None,
                 },
                 Instant::now(),
             ),
         );
-        self.state
-            .toast(format!("{name}: connection closed"), false);
+        self.state.toast(
+            self.state
+                .tf("{name}: connection closed", &[("name", &name)]),
+            false,
+        );
     }
 
     #[allow(clippy::too_many_lines)]
@@ -588,12 +608,18 @@ impl OpsDeckApp {
                         }
                     }
                 }
-                self.state.toast(format!("Connected to {name}"), false);
+                self.state.toast(
+                    self.state.tf("Connected to {name}", &[("name", &name)]),
+                    false,
+                );
             }
             AppMsg::ConnectFailed { host_id, error } => {
                 self.connecting.remove(&host_id);
-                self.state
-                    .toast(format!("Connection failed: {error}"), true);
+                self.state.toast(
+                    self.state
+                        .tf("Connection failed: {error}", &[("error", &error)]),
+                    true,
+                );
             }
             AppMsg::Reconnected {
                 old,
@@ -625,7 +651,7 @@ impl OpsDeckApp {
                 tokio::spawn(async move {
                     sftp.link_host(&host_id, new).await;
                 });
-                self.state.toast("Reconnected", false);
+                self.state.toast(self.state.t("Reconnected"), false);
             }
             AppMsg::SessionList(list) => {
                 self.sessions = list;
@@ -653,17 +679,32 @@ impl OpsDeckApp {
                 host_id,
                 result,
                 what,
-            } => match result {
-                Ok(()) => {
-                    self.state.toast(format!("{what} done"), false);
-                    let path = self.state.sftp_path(&host_id);
-                    self.navigate_sftp(&host_id, &path);
+            } => {
+                let op = self.state.t(match what.as_str() {
+                    "mkdir" => "Create directory",
+                    "delete" => "Delete",
+                    "rename" => "Rename",
+                    _ => "File operation",
+                });
+                match result {
+                    Ok(()) => {
+                        self.state
+                            .toast(self.state.tf("SFTP {op} done", &[("op", op)]), false);
+                        let path = self.state.sftp_path(&host_id);
+                        self.navigate_sftp(&host_id, &path);
+                    }
+                    Err(e) => self.state.toast(
+                        self.state.tf(
+                            "SFTP {op} failed: {e}",
+                            &[("op", op), ("e", &e.to_string())],
+                        ),
+                        true,
+                    ),
                 }
-                Err(e) => self.state.toast(format!("{what} failed: {e}"), true),
-            },
+            }
             AppMsg::BatchDone { results } => {
                 self.state.batch_output = results;
-                self.state.toast("Batch run finished", false);
+                self.state.toast(self.state.t("Batch run finished"), false);
             }
             AppMsg::MetricUpdate {
                 host_id,
@@ -701,11 +742,17 @@ impl OpsDeckApp {
                     remote,
                     forward,
                 });
-                self.state.toast(format!("Forwarding {local}"), false);
+                self.state.toast(
+                    self.state.tf("Forwarding {local}", &[("local", &local)]),
+                    false,
+                );
             }
             AppMsg::ForwardFailed { error } => {
-                self.state
-                    .toast(format!("Port forward failed: {error}"), true);
+                self.state.toast(
+                    self.state
+                        .tf("Port forward failed: {error}", &[("error", &error)]),
+                    true,
+                );
             }
             AppMsg::SyncDone { result } => {
                 self.sync_view.running = false;
@@ -722,19 +769,26 @@ impl OpsDeckApp {
                             self.sync_view.error = Some(summary.errors.join("; "));
                         }
                         self.cache_dirty = true;
-                        self.state.toast("Sync complete", false);
+                        self.state.toast(self.state.t("Sync complete"), false);
                     }
                     Err(e) => {
                         self.sync_view.error = Some(e.clone());
-                        self.state.toast(format!("Sync failed: {e}"), true);
+                        self.state.toast(
+                            self.state.tf("Sync failed: {e}", &[("e", &e.to_string())]),
+                            true,
+                        );
                     }
                 }
             }
             AppMsg::RekeyDone { result } => match result {
-                Ok(()) => self.state.toast("Master password changed", false),
-                Err(e) => self
+                Ok(()) => self
                     .state
-                    .toast(format!("Password change failed: {e}"), true),
+                    .toast(self.state.t("Master password changed"), false),
+                Err(e) => self.state.toast(
+                    self.state
+                        .tf("Password change failed: {e}", &[("e", &e.to_string())]),
+                    true,
+                ),
             },
             AppMsg::UpdateDone { result } => {
                 self.update_view.checking = false;
@@ -745,10 +799,13 @@ impl OpsDeckApp {
                         self.update_view.url = Some(info.url.clone());
                         self.update_view.error = None;
                         if info.available {
-                            self.state
-                                .toast(format!("Update available: {}", info.latest), false);
+                            self.state.toast(
+                                self.state
+                                    .tf("Update available: {latest}", &[("latest", &info.latest)]),
+                                false,
+                            );
                         } else {
-                            self.state.toast("You're up to date", false);
+                            self.state.toast(self.state.t("You're up to date"), false);
                         }
                     }
                     Err(e) => {
@@ -764,7 +821,7 @@ impl OpsDeckApp {
     /// Connect to a host (resolving proxy jumps), then open a tab / split pane.
     fn connect_host(&mut self, host_id: &str, open_tab: bool, split_into: Option<(usize, bool)>) {
         let Some(host) = self.cached.hosts.iter().find(|h| h.id == host_id).cloned() else {
-            self.state.toast("Host not found", true);
+            self.state.toast(self.state.t("Host not found"), true);
             return;
         };
         if self.connecting.contains_key(host_id) {
@@ -777,13 +834,17 @@ impl OpsDeckApp {
         while let Some(h) = current {
             guard += 1;
             if guard > 8 {
-                self.state.toast("Jump chain too deep", true);
+                self.state.toast(self.state.t("Jump chain too deep"), true);
                 return;
             }
             match h.to_config() {
                 Ok(cfg) => chain.push(cfg),
                 Err(e) => {
-                    self.state.toast(format!("Bad host config: {e}"), true);
+                    self.state.toast(
+                        self.state
+                            .tf("Bad host config: {e}", &[("e", &e.to_string())]),
+                        true,
+                    );
                     return;
                 }
             }
@@ -857,7 +918,7 @@ impl OpsDeckApp {
     fn navigate_sftp(&mut self, host_id: &str, path: &str) {
         let Some(session) = self.host_sessions.get(host_id).cloned() else {
             self.state
-                .toast("Connect the host first (Terminal tab)", true);
+                .toast(self.state.t("Connect the host first (Terminal tab)"), true);
             return;
         };
         let listing = self.sftp_listings.entry(host_id.to_string()).or_default();
@@ -886,7 +947,7 @@ impl OpsDeckApp {
         }
         let Some(session) = self.host_sessions.get(host_id).cloned() else {
             self.state
-                .toast("Connect the host first (Terminal tab)", true);
+                .toast(self.state.t("Connect the host first (Terminal tab)"), true);
             return;
         };
         let collector = self.metrics_collector.clone();
@@ -963,11 +1024,19 @@ impl OpsDeckApp {
                     Ok(()) => {
                         *self.vault.blocking_write() = Some(Arc::new(vault));
                         self.state.screen = Screen::Main;
-                        self.state.toast("Vault created", false);
+                        self.state.toast(self.state.t("Vault created"), false);
                     }
-                    Err(e) => self.state.toast(format!("Cannot save vault: {e}"), true),
+                    Err(e) => self.state.toast(
+                        self.state
+                            .tf("Cannot save vault: {e}", &[("e", &e.to_string())]),
+                        true,
+                    ),
                 },
-                Err(e) => self.state.toast(format!("Cannot create vault: {e}"), true),
+                Err(e) => self.state.toast(
+                    self.state
+                        .tf("Cannot create vault: {e}", &[("e", &e.to_string())]),
+                    true,
+                ),
             },
             UiEvent::UnlockVault(password) => {
                 match self.load_verifier().and_then(|v| {
@@ -1003,6 +1072,7 @@ impl OpsDeckApp {
                 let vault_arc = self.vault.clone();
                 let verifier_path = self.verifier_path.clone();
                 let tx = self.msg_tx.clone();
+                let wrong_pw_msg = self.state.t("Current password is wrong").to_string();
                 tokio::spawn(async move {
                     let result: Result<(), String> = async {
                         let json = std::fs::read_to_string(&verifier_path)
@@ -1010,7 +1080,7 @@ impl OpsDeckApp {
                         let verifier: VaultVerifier = serde_json::from_str(&json)
                             .map_err(|e| format!("parse verifier: {e}"))?;
                         let old_vault = Vault::unlock(&SecretString::new(old), &verifier)
-                            .map_err(|_| "Current password is wrong".to_string())?;
+                            .map_err(|_| wrong_pw_msg.clone())?;
                         // Decrypt everything with the OLD key first.
                         let metas = storage
                             .credentials()
@@ -1068,7 +1138,7 @@ impl OpsDeckApp {
                     .await;
                     let _ = tx.send(AppMsg::RekeyDone { result });
                 });
-                self.state.toast("Changing password…", false);
+                self.state.toast(self.state.t("Changing password…"), false);
             }
 
             // -- hosts ------------------------------------------------------
@@ -1119,7 +1189,7 @@ impl OpsDeckApp {
                     let _ = storage.hosts().delete(&id).await;
                 });
                 self.cache_dirty = true;
-                self.state.toast("Host deleted", false);
+                self.state.toast(self.state.t("Host deleted"), false);
             }
             UiEvent::ToggleFavorite(id) => {
                 if let Some(host) = self.cached.hosts.iter().find(|h| h.id == id).cloned() {
@@ -1152,7 +1222,8 @@ impl OpsDeckApp {
                     let tab_idx = self.state.active_tab;
                     self.connect_host(&pane.host_id, false, Some((tab_idx, vertical)));
                 } else {
-                    self.state.toast("No active terminal to split", true);
+                    self.state
+                        .toast(self.state.t("No active terminal to split"), true);
                 }
             }
             UiEvent::ClosePane(session) => self.disconnect_session(session),
@@ -1228,7 +1299,7 @@ impl OpsDeckApp {
                     }
                 });
                 self.cache_dirty = true;
-                self.state.toast("Upload queued", false);
+                self.state.toast(self.state.t("Upload queued"), false);
             }
             UiEvent::SftpDownload {
                 host_id,
@@ -1244,7 +1315,7 @@ impl OpsDeckApp {
                     }
                 });
                 self.cache_dirty = true;
-                self.state.toast("Download queued", false);
+                self.state.toast(self.state.t("Download queued"), false);
             }
             UiEvent::TransferPause(id) => {
                 let transfers = self.transfers.clone();
@@ -1285,7 +1356,8 @@ impl OpsDeckApp {
                     if let Some(shell) = self.shells.get(&session) {
                         let _ = shell.commands.send(ShellCommand::Write(cmd.into_bytes()));
                     } else {
-                        self.state.toast("Session has no open shell", true);
+                        self.state
+                            .toast(self.state.t("Session has no open shell"), true);
                     }
                 }
             }
@@ -1380,7 +1452,7 @@ impl OpsDeckApp {
                         }
                     }
                 });
-                self.state.toast("Batch run started", false);
+                self.state.toast(self.state.t("Batch run started"), false);
             }
 
             // -- port forwarding --------------------------------------------
@@ -1421,13 +1493,13 @@ impl OpsDeckApp {
                 }
                 Err(_) => self
                     .state
-                    .toast("Bad bind address (use 127.0.0.1:8080)", true),
+                    .toast(self.state.t("Bad bind address (use 127.0.0.1:8080)"), true),
             },
             UiEvent::StopForward(id) => {
                 if let Some(pos) = self.forwards.iter().position(|f| f.id == id) {
                     let fwd = self.forwards.remove(pos);
                     fwd.forward.close();
-                    self.state.toast("Forward stopped", false);
+                    self.state.toast(self.state.t("Forward stopped"), false);
                 }
             }
 
@@ -1451,6 +1523,14 @@ impl OpsDeckApp {
                     self.theme.terminal_font_size = tfs;
                     self.persist_theme();
                 }
+            }
+            UiEvent::SetLanguage(code) => {
+                let lang = Language::from_code(&code);
+                self.state.language = lang;
+                let storage = self.storage.clone();
+                tokio::spawn(async move {
+                    let _ = storage.set_setting("ui.language", lang.code()).await;
+                });
             }
             UiEvent::SetFontSize(size) => {
                 self.theme.font_size = size;
@@ -1632,7 +1712,7 @@ impl OpsDeckApp {
             }
         });
         self.cache_dirty = true;
-        self.state.toast("Host saved", false);
+        self.state.toast(self.state.t("Host saved"), false);
     }
 
     fn import_hosts(&mut self, json: &str) {
@@ -1652,9 +1732,17 @@ impl OpsDeckApp {
                     }
                 });
                 self.cache_dirty = true;
-                self.state.toast(format!("Imported {count} host(s)"), false);
+                self.state.toast(
+                    self.state
+                        .tf("Imported {count} host(s)", &[("count", &count.to_string())]),
+                    false,
+                );
             }
-            Err(e) => self.state.toast(format!("Import failed: {e}"), true),
+            Err(e) => self.state.toast(
+                self.state
+                    .tf("Import failed: {e}", &[("e", &e.to_string())]),
+                true,
+            ),
         }
     }
 
@@ -1668,11 +1756,22 @@ impl OpsDeckApp {
                     .map(|h| format!("{h}/Downloads/opsdeck-hosts.json"))
                     .unwrap_or_else(|_| "/tmp/opsdeck-hosts.json".to_string());
                 match std::fs::write(&path, json) {
-                    Ok(()) => self.state.toast(format!("Exported to {path}"), false),
-                    Err(e) => self.state.toast(format!("Export failed: {e}"), true),
+                    Ok(()) => self.state.toast(
+                        self.state.tf("Exported to {path}", &[("path", &path)]),
+                        false,
+                    ),
+                    Err(e) => self.state.toast(
+                        self.state
+                            .tf("Export failed: {e}", &[("e", &e.to_string())]),
+                        true,
+                    ),
                 }
             }
-            Err(e) => self.state.toast(format!("Export failed: {e}"), true),
+            Err(e) => self.state.toast(
+                self.state
+                    .tf("Export failed: {e}", &[("e", &e.to_string())]),
+                true,
+            ),
         }
     }
 
@@ -1684,12 +1783,12 @@ impl OpsDeckApp {
         let kind = self.state.sync_kind.clone();
         if kind == "off" {
             self.state
-                .toast("Sync is off — pick a mode in Settings", true);
+                .toast(self.state.t("Sync is off — pick a mode in Settings"), true);
             return;
         }
         let vault = self.vault.blocking_read().clone();
         let Some(vault) = vault else {
-            self.state.toast("Vault is locked", true);
+            self.state.toast(self.state.t("Vault is locked"), true);
             return;
         };
         self.sync_view.running = true;

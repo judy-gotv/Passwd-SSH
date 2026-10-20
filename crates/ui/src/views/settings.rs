@@ -1,6 +1,7 @@
-//! Settings view: theme, fonts, vault, sync, update, shortcuts, about.
+//! Settings view: language, theme, fonts, vault, sync, update, shortcuts, about.
 //! Author: Passwd Word
 
+use crate::i18n::Language;
 use crate::theme::Theme;
 use crate::{UiData, UiEvent, UiState};
 
@@ -8,9 +9,26 @@ use crate::{UiData, UiEvent, UiState};
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
     egui::CentralPanel::default().show(ui, |ui| {
         egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.label(egui::RichText::new("Appearance").strong());
+            ui.label(egui::RichText::new(state.t("Appearance")).strong());
             ui.horizontal(|ui| {
-                ui.label("Theme:");
+                ui.label(state.t("Language:"));
+                egui::ComboBox::from_id_salt("language_picker")
+                    .selected_text(state.language.name())
+                    .show_ui(ui, |ui| {
+                        for lang in Language::all() {
+                            if ui
+                                .selectable_label(state.language == lang, lang.name())
+                                .clicked()
+                            {
+                                state.language = lang;
+                                events.push(UiEvent::SetLanguage(lang.code().to_string()));
+                                ui.close();
+                            }
+                        }
+                    });
+            });
+            ui.horizontal(|ui| {
+                ui.label(state.t("Theme:"));
                 egui::ComboBox::from_id_salt("theme_picker")
                     .selected_text(&state.theme_name)
                     .show_ui(ui, |ui| {
@@ -27,14 +45,17 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
             });
             let mut fs = data.theme.font_size;
             if ui
-                .add(egui::Slider::new(&mut fs, 10.0..=22.0).text("UI font size"))
+                .add(egui::Slider::new(&mut fs, 10.0..=22.0).text(state.t("UI font size")))
                 .changed()
             {
                 events.push(UiEvent::SetFontSize(fs));
             }
             let mut tfs = data.theme.terminal_font_size;
             if ui
-                .add(egui::Slider::new(&mut tfs, 10.0..=24.0).text("Terminal font size"))
+                .add(
+                    egui::Slider::new(&mut tfs, 10.0..=24.0)
+                        .text(state.t("Terminal font size")),
+                )
                 .changed()
             {
                 events.push(UiEvent::SetTerminalFontSize(tfs));
@@ -42,25 +63,25 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
 
             ui.add_space(12.0);
             ui.separator();
-            ui.label(egui::RichText::new("Vault").strong());
+            ui.label(egui::RichText::new(state.t("Vault")).strong());
             ui.horizontal(|ui| {
-                ui.label("Current password:");
+                ui.label(state.t("Current password:"));
                 ui.add(egui::TextEdit::singleline(&mut state.settings_pw_old).password(true));
             });
             ui.horizontal(|ui| {
-                ui.label("New password:");
+                ui.label(state.t("New password:"));
                 ui.add(egui::TextEdit::singleline(&mut state.settings_pw_new).password(true));
             });
             ui.horizontal(|ui| {
-                ui.label("Confirm new:");
+                ui.label(state.t("Confirm new:"));
                 ui.add(egui::TextEdit::singleline(&mut state.settings_pw_confirm).password(true));
             });
             ui.horizontal(|ui| {
-                if ui.button("Change master password").clicked() {
+                if ui.button(state.t("Change master password")).clicked() {
                     if state.settings_pw_new.len() < 8 {
-                        state.toast("New password must be at least 8 characters", true);
+                        state.toast(state.t("New password must be at least 8 characters"), true);
                     } else if state.settings_pw_new != state.settings_pw_confirm {
-                        state.toast("New passwords do not match", true);
+                        state.toast(state.t("New passwords do not match"), true);
                     } else {
                         events.push(UiEvent::ChangeMasterPassword {
                             old: std::mem::take(&mut state.settings_pw_old),
@@ -69,49 +90,61 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                         state.settings_pw_confirm.clear();
                     }
                 }
-                if ui.button("🔒 Lock vault").clicked() {
+                if ui.button(state.t("🔒 Lock vault")).clicked() {
                     events.push(UiEvent::LockVault);
                 }
             });
 
             ui.add_space(12.0);
             ui.separator();
-            ui.label(egui::RichText::new("Sync").strong());
+            ui.label(egui::RichText::new(state.t("Sync")).strong());
             ui.horizontal(|ui| {
-                ui.label("Mode:");
+                ui.label(state.t("Mode:"));
                 egui::ComboBox::from_id_salt("sync_kind")
                     .selected_text(match state.sync_kind.as_str() {
-                        "file" => "Shared folder",
-                        "http" => "Sync server",
-                        _ => "Off",
+                        "file" => state.t("Shared folder"),
+                        "http" => state.t("Sync server"),
+                        _ => state.t("Off"),
                     })
                     .show_ui(ui, |ui| {
-                        for (id, label) in [("off", "Off"), ("file", "Shared folder"), ("http", "Sync server")] {
+                        for (id, key) in [
+                            ("off", "Off"),
+                            ("file", "Shared folder"),
+                            ("http", "Sync server"),
+                        ] {
+                            let label = state.t(key);
                             if ui.selectable_label(state.sync_kind == id, label).clicked() {
                                 state.sync_kind = id.to_string();
                             }
                         }
                     });
-                if ui.button("Save").clicked() {
+                if ui.button(state.t("Save")).clicked() {
                     events.push(UiEvent::SetSyncKind(state.sync_kind.clone()));
                 }
-                if ui.button("Sync now").clicked() {
+                if ui.button(state.t("Sync now")).clicked() {
                     events.push(UiEvent::SyncNow);
                 }
             });
             if state.sync_kind == "file" {
                 ui.horizontal(|ui| {
-                    ui.label("Folder:");
+                    ui.label(state.t("Folder:"));
+                    let folder_hint = state.t("/path/to/synced/folder");
                     ui.add(
                         egui::TextEdit::singleline(&mut state.sync_file_dir)
-                            .hint_text("/path/to/synced/folder")
+                            .hint_text(folder_hint)
                             .desired_width(320.0),
                     );
                 });
-                ui.label(egui::RichText::new("Any folder replicated by Syncthing / Nextcloud / rsync works.").small().weak());
+                ui.label(
+                    egui::RichText::new(
+                        state.t("Any folder replicated by Syncthing / Nextcloud / rsync works."),
+                    )
+                    .small()
+                    .weak(),
+                );
             } else if state.sync_kind == "http" {
                 ui.horizontal(|ui| {
-                    ui.label("Server:");
+                    ui.label(state.t("Server:"));
                     ui.add(
                         egui::TextEdit::singleline(&mut state.sync_http_endpoint)
                             .hint_text("https://sync.example.com")
@@ -122,29 +155,37 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
             if data.sync.running {
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label("Syncing…");
+                    ui.label(state.t("Syncing…"));
                 });
             }
             if let Some(summary) = &data.sync.last_summary {
-                ui.label(format!("Last sync: {summary}"));
+                ui.label(state.tf("Last sync: {summary}", &[("summary", summary)]));
             } else if let Some(ts) = data.sync.last_sync {
-                ui.label(format!("Last sync at {ts}"));
+                ui.label(state.tf("Last sync at {ts}", &[("ts", &ts.to_string())]));
             }
             if let Some(err) = &data.sync.error {
-                ui.colored_label(egui::Color32::from_rgb(255, 120, 120), format!("Sync error: {err}"));
+                ui.colored_label(
+                    egui::Color32::from_rgb(255, 120, 120),
+                    state.tf("Sync error: {err}", &[("err", err)]),
+                );
             }
             ui.label(
-                egui::RichText::new("Only hosts, groups and snippets sync — and always end-to-end encrypted. Credentials never leave this device.")
-                    .small()
-                    .weak(),
+                egui::RichText::new(state.t(
+                    "Only hosts, groups and snippets sync — and always end-to-end encrypted. Credentials never leave this device.",
+                ))
+                .small()
+                .weak(),
             );
 
             ui.add_space(12.0);
             ui.separator();
-            ui.label(egui::RichText::new("Updates").strong());
+            ui.label(egui::RichText::new(state.t("Updates")).strong());
             ui.horizontal(|ui| {
-                ui.label(format!("Current version: {}", data.update.current));
-                if ui.button("Check for updates").clicked() {
+                ui.label(state.tf(
+                    "Current version: {current}",
+                    &[("current", &data.update.current)],
+                ));
+                if ui.button(state.t("Check for updates")).clicked() {
                     events.push(UiEvent::CheckUpdate);
                 }
                 if data.update.checking {
@@ -155,39 +196,57 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 ui.horizontal(|ui| {
                     ui.colored_label(
                         egui::Color32::from_rgb(120, 220, 120),
-                        format!("New version available: {}", data.update.latest.clone().unwrap_or_default()),
+                        state.tf(
+                            "New version available: {latest}",
+                            &[(
+                                "latest",
+                                &data.update.latest.clone().unwrap_or_default(),
+                            )],
+                        ),
                     );
                     if let Some(url) = data.update.url.clone()
-                        && ui.button("Download").clicked()
+                        && ui.button(state.t("Download")).clicked()
                     {
                         events.push(UiEvent::OpenUrl(url));
                     }
                 });
             } else if let Some(err) = &data.update.error {
-                ui.colored_label(egui::Color32::from_rgb(255, 120, 120), format!("Update check failed: {err}"));
+                ui.colored_label(
+                    egui::Color32::from_rgb(255, 120, 120),
+                    state.tf("Update check failed: {err}", &[("err", err)]),
+                );
             }
 
             ui.add_space(12.0);
             ui.separator();
-            ui.label(egui::RichText::new("Keyboard shortcuts").strong());
-            egui::Grid::new("shortcut_grid").num_columns(3).striped(true).show(ui, |ui| {
-                ui.label(egui::RichText::new("Action").strong());
-                ui.label(egui::RichText::new("Windows / Linux").strong());
-                ui.label(egui::RichText::new("macOS").strong());
-                ui.end_row();
-                for s in crate::shortcuts::default_shortcuts() {
-                    ui.label(s.description);
-                    ui.label(egui::RichText::new(s.windows_linux).monospace());
-                    ui.label(egui::RichText::new(s.macos).monospace());
+            ui.label(egui::RichText::new(state.t("Keyboard shortcuts")).strong());
+            egui::Grid::new("shortcut_grid")
+                .num_columns(3)
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.label(egui::RichText::new(state.t("Action")).strong());
+                    ui.label(egui::RichText::new("Windows / Linux").strong());
+                    ui.label(egui::RichText::new("macOS").strong());
                     ui.end_row();
-                }
-            });
+                    for s in crate::shortcuts::default_shortcuts() {
+                        ui.label(state.t(s.description));
+                        ui.label(egui::RichText::new(s.windows_linux).monospace());
+                        ui.label(egui::RichText::new(s.macos).monospace());
+                        ui.end_row();
+                    }
+                });
 
             ui.add_space(12.0);
             ui.separator();
-            ui.label(egui::RichText::new("About").strong());
-            ui.label(format!("OpsDeck {}", data.update.current));
-            ui.label(egui::RichText::new("A local-first SSH workstation. Your data stays on your machine.").small().weak());
+            ui.label(egui::RichText::new(state.t("About")).strong());
+            ui.label(state.tf("OpsDeck {current}", &[("current", &data.update.current)]));
+            ui.label(
+                egui::RichText::new(state.t(
+                    "A local-first SSH workstation. Your data stays on your machine.",
+                ))
+                .small()
+                .weak(),
+            );
         });
     });
 }

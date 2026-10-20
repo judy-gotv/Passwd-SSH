@@ -18,9 +18,10 @@ pub fn left_panel(
         .show(ui, |ui| {
             // Search
             ui.horizontal(|ui| {
+                let search_hint = state.t("Search hosts  (Ctrl+P)");
                 let resp = ui.add(
                     egui::TextEdit::singleline(&mut state.host_search)
-                        .hint_text("Search hosts  (Ctrl+P)")
+                        .hint_text(search_hint)
                         .desired_width(f32::INFINITY),
                 );
                 if state.focus_host_search {
@@ -32,20 +33,22 @@ pub fn left_panel(
 
             // Action row
             ui.horizontal(|ui| {
-                if ui.small_button("＋ Add").clicked() {
+                if ui.small_button(state.t("＋ Add")).clicked() {
                     state.host_form = HostForm::blank();
                     state.show_host_editor = true;
                 }
-                if ui.small_button("⤒ Import").clicked() {
+                if ui.small_button(state.t("⤒ Import")).clicked() {
                     state.confirm = Some(crate::ConfirmDialog {
-                        title: "Import hosts".to_string(),
-                        message: "Paste the exported JSON below, then confirm.".to_string(),
-                        confirm_label: "Import".to_string(),
+                        title: state.t("Import hosts").to_string(),
+                        message: state
+                            .t("Paste the exported JSON below, then confirm.")
+                            .to_string(),
+                        confirm_label: state.t("Import").to_string(),
                         action: "import_hosts".to_string(),
                     });
                     state.import_buffer.clear();
                 }
-                if ui.small_button("⤓ Export").clicked() {
+                if ui.small_button(state.t("⤓ Export")).clicked() {
                     events.push(UiEvent::ExportHosts);
                 }
             });
@@ -60,7 +63,7 @@ pub fn left_panel(
                 .filter(|h| h.favorite && matches_query(h, &query))
                 .collect();
             if !favorites.is_empty() {
-                ui.label(egui::RichText::new("★ Favorites").small().weak());
+                ui.label(egui::RichText::new(state.t("★ Favorites")).small().weak());
                 for host in favorites {
                     host_row(ui, state, data, events, host);
                 }
@@ -95,7 +98,7 @@ pub fn left_panel(
             }
             if !ungrouped.is_empty() {
                 if !data.groups.is_empty() {
-                    ui.label(egui::RichText::new("Ungrouped").small().weak());
+                    ui.label(egui::RichText::new(state.t("Ungrouped")).small().weak());
                 }
                 for host in ungrouped {
                     host_row(ui, state, data, events, host);
@@ -104,9 +107,9 @@ pub fn left_panel(
 
             if data.hosts.is_empty() {
                 ui.add_space(12.0);
-                ui.label(egui::RichText::new("No hosts yet.").weak());
+                ui.label(egui::RichText::new(state.t("No hosts yet.")).weak());
                 ui.label(
-                    egui::RichText::new("Click “＋ Add” to add your first server.")
+                    egui::RichText::new(state.t("Click “＋ Add” to add your first server."))
                         .small()
                         .weak(),
                 );
@@ -117,7 +120,7 @@ pub fn left_panel(
 
             // Sessions
             if !data.sessions.is_empty() {
-                ui.label(egui::RichText::new("Sessions").small().weak());
+                ui.label(egui::RichText::new(state.t("Sessions")).small().weak());
                 for session in data.sessions {
                     ui.horizontal(|ui| {
                         let dot = match session.state {
@@ -128,11 +131,18 @@ pub fn left_panel(
                         };
                         ui.label(format!("{dot} {}", session.name));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("✕").on_hover_text("Disconnect").clicked() {
+                            if ui
+                                .small_button("✕")
+                                .on_hover_text(state.t("Disconnect"))
+                                .clicked()
+                            {
                                 events.push(UiEvent::DisconnectSession(session.id));
                             }
                             if session.state == SessionState::Failed
-                                && ui.small_button("↻").on_hover_text("Reconnect").clicked()
+                                && ui
+                                    .small_button("↻")
+                                    .on_hover_text(state.t("Reconnect"))
+                                    .clicked()
                             {
                                 events.push(UiEvent::ReconnectSession(session.id));
                             }
@@ -179,7 +189,7 @@ fn host_row(
         let star = if host.favorite { "★" } else { "☆" };
         if ui
             .small_button(star)
-            .on_hover_text("Toggle favorite")
+            .on_hover_text(state.t("Toggle favorite"))
             .clicked()
         {
             events.push(UiEvent::ToggleFavorite(host.id.clone()));
@@ -192,26 +202,42 @@ fn host_row(
         if resp.double_clicked() && !connecting {
             events.push(UiEvent::ConnectHost(host.id.clone()));
         }
-        resp.on_hover_text(format!(
-            "{}@{}:{}\nDouble-click to connect",
-            host.username, host.host, host.port
+        resp.on_hover_text(state.tf(
+            "{user}@{host}:{port}\nDouble-click to connect",
+            &[
+                ("user", &host.username),
+                ("host", &host.host),
+                ("port", &host.port.to_string()),
+            ],
         ));
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if connecting {
                 ui.spinner();
-            } else if ui.small_button("▶").on_hover_text("Connect").clicked() {
+            } else if ui
+                .small_button("▶")
+                .on_hover_text(state.t("Connect"))
+                .clicked()
+            {
                 events.push(UiEvent::ConnectHost(host.id.clone()));
             }
-            if ui.small_button("✎").on_hover_text("Edit").clicked() {
+            if ui
+                .small_button("✎")
+                .on_hover_text(state.t("Edit"))
+                .clicked()
+            {
                 state.host_form = host_form_from(host, data);
                 state.show_host_editor = true;
             }
-            if ui.small_button("🗑").on_hover_text("Delete").clicked() {
+            if ui
+                .small_button("🗑")
+                .on_hover_text(state.t("Delete"))
+                .clicked()
+            {
                 state.confirm = Some(crate::ConfirmDialog {
-                    title: "Delete host".to_string(),
-                    message: format!("Delete host “{}”?", host.name),
-                    confirm_label: "Delete".to_string(),
+                    title: state.t("Delete host").to_string(),
+                    message: state.tf("Delete host “{name}”?", &[("name", &host.name)]),
+                    confirm_label: state.t("Delete").to_string(),
                     action: format!("delete_host:{}", host.id),
                 });
             }
@@ -222,11 +248,11 @@ fn host_row(
     if selected {
         ui.horizontal(|ui| {
             ui.add_space(18.0);
-            if ui.small_button("Terminal").clicked() {
+            if ui.small_button(state.t("Terminal")).clicked() {
                 state.main_tab = MainTab::Terminal;
                 events.push(UiEvent::ConnectHost(host.id.clone()));
             }
-            if ui.small_button("Files").clicked() {
+            if ui.small_button(state.t("Files")).clicked() {
                 state.main_tab = MainTab::Files;
                 state.sftp_host = Some(host.id.clone());
                 events.push(UiEvent::SftpNavigate {
@@ -234,7 +260,7 @@ fn host_row(
                     path: state.sftp_path(&host.id),
                 });
             }
-            if ui.small_button("Monitor").clicked() {
+            if ui.small_button(state.t("Monitor")).clicked() {
                 state.main_tab = MainTab::Monitor;
                 events.push(UiEvent::MonitorSelect(host.id.clone()));
             }

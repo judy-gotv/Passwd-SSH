@@ -13,38 +13,41 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, _data: &UiData, events: &mut
         ui.vertical_centered(|ui| {
             ui.add_space(90.0);
             ui.heading(egui::RichText::new("OpsDeck").size(36.0));
-            ui.label("SSH Workstation");
+            ui.label(state.t("SSH Workstation"));
             ui.add_space(30.0);
 
             let width = 320.0;
             ui.set_max_width(width);
 
             if first_run {
-                ui.label("Create a master password. It encrypts all stored credentials.");
+                ui.label(state.t("Create a master password. It encrypts all stored credentials."));
                 ui.add_space(8.0);
+                let pw_hint = state.t("Master password");
                 let pw = TextEdit::singleline(&mut state.password_input)
                     .password(true)
-                    .hint_text("Master password")
+                    .hint_text(pw_hint)
                     .desired_width(width);
                 let resp = ui.add(pw);
+                let confirm_hint = state.t("Confirm password");
                 let confirm = TextEdit::singleline(&mut state.password_confirm)
                     .password(true)
-                    .hint_text("Confirm password")
+                    .hint_text(confirm_hint)
                     .desired_width(width);
                 ui.add(confirm);
                 if resp.lost_focus() && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter)) {
                     try_create(state, events);
                 }
                 ui.add_space(8.0);
-                if ui.button("Create vault").clicked() {
+                if ui.button(state.t("Create vault")).clicked() {
                     try_create(state, events);
                 }
             } else {
-                ui.label("Enter your master password to unlock.");
+                ui.label(state.t("Enter your master password to unlock."));
                 ui.add_space(8.0);
+                let pw_hint = state.t("Master password");
                 let pw = TextEdit::singleline(&mut state.password_input)
                     .password(true)
-                    .hint_text("Master password")
+                    .hint_text(pw_hint)
                     .desired_width(width);
                 let resp = ui.add(pw);
                 // Focus the field on first show.
@@ -55,7 +58,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, _data: &UiData, events: &mut
                     try_unlock(state, events);
                 }
                 ui.add_space(8.0);
-                if ui.button("Unlock").clicked() {
+                if ui.button(state.t("Unlock")).clicked() {
                     try_unlock(state, events);
                 }
             }
@@ -68,7 +71,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, _data: &UiData, events: &mut
             ui.add_space(24.0);
             ui.label(
                 egui::RichText::new(
-                    "Credentials never leave this device unencrypted.\nThere is no password recovery — don't forget it.",
+                    state.t("Credentials never leave this device unencrypted.\nThere is no password recovery — don't forget it."),
                 )
                 .small()
                 .weak(),
@@ -79,11 +82,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, _data: &UiData, events: &mut
 
 fn try_create(state: &mut UiState, events: &mut Vec<UiEvent>) {
     if state.password_input.len() < 8 {
-        state.unlock_error = Some("Use at least 8 characters.".to_string());
+        state.unlock_error = Some(state.t("Use at least 8 characters.").to_string());
         return;
     }
     if state.password_input != state.password_confirm {
-        state.unlock_error = Some("Passwords do not match.".to_string());
+        state.unlock_error = Some(state.t("Passwords do not match.").to_string());
         return;
     }
     state.unlock_error = None;

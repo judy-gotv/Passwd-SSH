@@ -7,13 +7,14 @@ use crate::{SnippetForm, UiData, UiEvent, UiState};
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
     egui::CentralPanel::default().show(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Snippets");
+            ui.label(state.t("Snippets"));
+            let search_hint = state.t("Search snippets");
             ui.add(
                 egui::TextEdit::singleline(&mut state.snippet_search)
-                    .hint_text("Search snippets")
+                    .hint_text(search_hint)
                     .desired_width(220.0),
             );
-            if ui.small_button("＋ New").clicked() {
+            if ui.small_button(state.t("＋ New")).clicked() {
                 state.snippet_form = SnippetForm::default();
                 state.show_snippet_editor = true;
             }
@@ -40,15 +41,24 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                         }
                     });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.small_button("🗑").on_hover_text("Delete").clicked() {
+                        if ui
+                            .small_button("🗑")
+                            .on_hover_text(state.t("Delete"))
+                            .clicked()
+                        {
                             state.confirm = Some(crate::ConfirmDialog {
-                                title: "Delete snippet".to_string(),
-                                message: format!("Delete snippet “{}”?", snippet.title),
-                                confirm_label: "Delete".to_string(),
+                                title: state.t("Delete snippet").to_string(),
+                                message: state
+                                    .tf("Delete snippet “{title}”?", &[("title", &snippet.title)]),
+                                confirm_label: state.t("Delete").to_string(),
                                 action: format!("delete_snippet:{}", snippet.id),
                             });
                         }
-                        if ui.small_button("✎").on_hover_text("Edit").clicked() {
+                        if ui
+                            .small_button("✎")
+                            .on_hover_text(state.t("Edit"))
+                            .clicked()
+                        {
                             state.snippet_form = SnippetForm {
                                 id: Some(snippet.id.clone()),
                                 title: snippet.title.clone(),
@@ -60,7 +70,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                         }
                         if ui
                             .small_button("▶")
-                            .on_hover_text("Run on active terminal")
+                            .on_hover_text(state.t("Run on active terminal"))
                             .clicked()
                         {
                             if let Some(pane) = state.active_pane().cloned() {
@@ -69,7 +79,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                                     session: pane.session,
                                 });
                             } else {
-                                state.toast("No active terminal", true);
+                                state.toast(state.t("No active terminal"), true);
                             }
                         }
                     });
@@ -79,7 +89,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
             if data.snippets.is_empty() {
                 ui.label(
                     egui::RichText::new(
-                        "No snippets yet. Built-in examples are seeded on first run.",
+                        state.t("No snippets yet. Built-in examples are seeded on first run."),
                     )
                     .weak(),
                 );
@@ -88,15 +98,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
 
         // Batch run
         ui.separator();
-        ui.label(egui::RichText::new("Batch run").strong());
+        ui.label(egui::RichText::new(state.t("Batch run")).strong());
         ui.horizontal(|ui| {
-            ui.label("Command:");
+            ui.label(state.t("Command:"));
             ui.add(
                 egui::TextEdit::singleline(&mut state.batch_command).desired_width(f32::INFINITY),
             );
         });
         ui.horizontal(|ui| {
-            ui.label("Targets:");
+            ui.label(state.t("Targets:"));
             for tab in &state.tabs {
                 for pane in &tab.panes {
                     let mut selected = state.batch_selected.contains(&pane.session);
@@ -110,16 +120,17 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 }
             }
             if state.tabs.is_empty() {
-                ui.label(egui::RichText::new("no open sessions").weak());
+                ui.label(egui::RichText::new(state.t("no open sessions")).weak());
             }
         });
         ui.horizontal(|ui| {
-            ui.checkbox(&mut state.batch_allow_dangerous, "Allow dangerous commands");
-            if ui.button("▶ Run on selected").clicked() {
+            let dangerous_label = state.t("Allow dangerous commands");
+            ui.checkbox(&mut state.batch_allow_dangerous, dangerous_label);
+            if ui.button(state.t("▶ Run on selected")).clicked() {
                 if state.batch_command.trim().is_empty() {
-                    state.toast("Enter a command first", true);
+                    state.toast(state.t("Enter a command first"), true);
                 } else if state.batch_selected.is_empty() {
-                    state.toast("Select at least one session", true);
+                    state.toast(state.t("Select at least one session"), true);
                 } else {
                     events.push(UiEvent::BatchRun {
                         sessions: state.batch_selected.clone(),
@@ -128,7 +139,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                     });
                 }
             }
-            if ui.small_button("Clear output").clicked() {
+            if ui.small_button(state.t("Clear output")).clicked() {
                 state.batch_output.clear();
             }
         });
