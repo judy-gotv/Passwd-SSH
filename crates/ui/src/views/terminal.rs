@@ -170,39 +170,33 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
             search_bar(ui, state, data, events, pane.session);
         }
 
-        if vertical {
-            ui.vertical(|ui| {
-                for pane_idx in 0..pane_count {
-                    let (session, title) = {
-                        let p = &state.tabs[tab_idx].panes[pane_idx];
-                        (p.session, p.title.clone())
-                    };
-                    let h = ui.available_height() / (pane_count - pane_idx) as f32;
-                    let rect =
-                        Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), h));
-                    pane_widget(
-                        ui, state, data, events, tab_idx, pane_idx, session, &title, rect,
-                    );
-                }
-            });
-        } else {
-            ui.horizontal(|ui| {
-                for pane_idx in 0..pane_count {
-                    let (session, title) = {
-                        let p = &state.tabs[tab_idx].panes[pane_idx];
-                        (p.session, p.title.clone())
-                    };
-                    let w = ui.available_width() / (pane_count - pane_idx) as f32;
-                    let rect =
-                        Rect::from_min_size(ui.cursor().min, Vec2::new(w, ui.available_height()));
-                    pane_widget(
-                        ui, state, data, events, tab_idx, pane_idx, session, &title, rect,
-                    );
-                    if pane_idx + 1 < pane_count {
-                        ui.separator();
-                    }
-                }
-            });
+        // Split the whole central area manually. Do NOT measure inside
+        // ui.horizontal/ui.vertical: in egui 0.37 those start out one
+        // interact-row tall/wide, so available_height() collapses to
+        // ~30px and the terminal shrinks to a strip (the v0.2.x bug).
+        let full = ui.available_rect_before_wrap();
+        let gap = if pane_count > 1 { 4.0 } else { 0.0 };
+        for pane_idx in 0..pane_count {
+            let (session, title) = {
+                let p = &state.tabs[tab_idx].panes[pane_idx];
+                (p.session, p.title.clone())
+            };
+            let rect = if vertical {
+                let h = full.height() / pane_count as f32;
+                Rect::from_min_size(
+                    Pos2::new(full.left(), full.top() + h * pane_idx as f32),
+                    Vec2::new(full.width(), h - gap),
+                )
+            } else {
+                let w = full.width() / pane_count as f32;
+                Rect::from_min_size(
+                    Pos2::new(full.left() + w * pane_idx as f32, full.top()),
+                    Vec2::new(w - gap, full.height()),
+                )
+            };
+            pane_widget(
+                ui, state, data, events, tab_idx, pane_idx, session, &title, rect,
+            );
         }
     });
 }

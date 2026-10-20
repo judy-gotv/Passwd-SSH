@@ -38,6 +38,7 @@ fn map_host(row: &sqlx::sqlite::SqliteRow) -> Result<Host, sqlx::Error> {
             .unwrap_or_else(|| "[]".to_string()),
         favorite: row.try_get::<i64, _>("favorite")? != 0,
         last_connected_at: row.try_get("last_connected_at")?,
+        connect_count: row.try_get("connect_count").unwrap_or(0),
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
     })
@@ -294,15 +295,18 @@ impl HostDao<'_> {
             .map_err(Into::into)
     }
 
-    /// Mark a host as just connected.
+    /// Mark a host as just connected (also bumps the usage counter).
     pub async fn touch_connected(&self, id: &str) -> Result<(), StorageError> {
         let now = now_unix();
-        sqlx::query("UPDATE hosts SET last_connected_at = ?, updated_at = ? WHERE id = ?")
-            .bind(now)
-            .bind(now)
-            .bind(id)
-            .execute(self.pool)
-            .await?;
+        sqlx::query(
+            "UPDATE hosts SET last_connected_at = ?, connect_count = connect_count + 1, \
+             updated_at = ? WHERE id = ?",
+        )
+        .bind(now)
+        .bind(now)
+        .bind(id)
+        .execute(self.pool)
+        .await?;
         Ok(())
     }
 

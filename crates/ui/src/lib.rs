@@ -59,6 +59,7 @@ pub enum UiEvent {
     SaveHost(Box<HostForm>),
     SaveHostConnect(Box<HostForm>),
     DeleteHost(String),
+    DeleteCredential(String),
     ToggleFavorite(String),
     ImportHosts(String),
     ExportHosts,

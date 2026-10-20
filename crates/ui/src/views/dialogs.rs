@@ -605,6 +605,11 @@ fn dispatch_confirm_action(state: &mut UiState, events: &mut Vec<UiEvent>, actio
                 events.push(UiEvent::DeleteGroup(id.to_string()));
             }
         }
+        "delete_credential" => {
+            if let Some(id) = parts.next() {
+                events.push(UiEvent::DeleteCredential(id.to_string()));
+            }
+        }
         "delete_snippet" => {
             if let Some(id) = parts.next() {
                 events.push(UiEvent::DeleteSnippet(id.to_string()));

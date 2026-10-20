@@ -609,6 +609,14 @@ impl OpsDeckApp {
                 split_into,
             } => {
                 self.connecting.remove(&host_id);
+                {
+                    let storage = self.storage.clone();
+                    let hid = host_id.clone();
+                    tokio::spawn(async move {
+                        let _ = storage.hosts().touch_connected(&hid).await;
+                    });
+                    self.cache_dirty = true;
+                }
                 let name = self
                     .cached
                     .hosts
@@ -732,6 +740,14 @@ impl OpsDeckApp {
                 handle,
             } => {
                 self.connecting.remove(&host_id);
+                {
+                    let storage = self.storage.clone();
+                    let hid = host_id.clone();
+                    tokio::spawn(async move {
+                        let _ = storage.hosts().touch_connected(&hid).await;
+                    });
+                    self.cache_dirty = true;
+                }
                 self.desktop_views.push(opsdeck_ui::DesktopView {
                     id,
                     host_id: host_id.clone(),
@@ -1544,12 +1560,44 @@ impl OpsDeckApp {
             UiEvent::SaveHost(form) => self.begin_save_host(*form, false),
             UiEvent::SaveHostConnect(form) => self.begin_save_host(*form, true),
             UiEvent::DeleteHost(id) => {
+                // Clean up credentials that only this host referenced.
+                let orphans: Vec<String> = self
+                    .cached
+                    .hosts
+                    .iter()
+                    .find(|h| h.id == id)
+                    .map(|h| {
+                        [h.credential_id.clone(), h.passphrase_credential_id.clone()]
+                            .into_iter()
+                            .flatten()
+                            .filter(|cid| {
+                                !self.cached.hosts.iter().any(|o| {
+                                    o.id != id
+                                        && (o.credential_id.as_deref() == Some(cid.as_str())
+                                            || o.passphrase_credential_id.as_deref()
+                                                == Some(cid.as_str()))
+                                })
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 let storage = self.storage.clone();
                 tokio::spawn(async move {
                     let _ = storage.hosts().delete(&id).await;
+                    for cid in orphans {
+                        let _ = storage.credentials().delete(&cid).await;
+                    }
                 });
                 self.cache_dirty = true;
                 self.state.toast(self.state.t("Host deleted"), false);
+            }
+            UiEvent::DeleteCredential(id) => {
+                let storage = self.storage.clone();
+                tokio::spawn(async move {
+                    let _ = storage.credentials().delete(&id).await;
+                });
+                self.cache_dirty = true;
+                self.state.toast(self.state.t("Credential deleted"), false);
             }
             UiEvent::ToggleFavorite(id) => {
                 if let Some(host) = self.cached.hosts.iter().find(|h| h.id == id).cloned() {

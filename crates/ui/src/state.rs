@@ -43,6 +43,10 @@ pub enum GroupFilter {
     All,
     /// Starred hosts.
     Favorites,
+    /// Recently connected hosts, most recent first.
+    Recent,
+    /// Most frequently connected hosts.
+    Frequent,
     /// Hosts of one group id.
     Group(String),
 }

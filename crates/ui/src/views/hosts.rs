@@ -73,11 +73,37 @@ pub fn left_panel(
             if tree_row(
                 ui,
                 "★",
-                state.t("★ Favorites"),
+                state.t("Favorites"),
                 fav_count,
                 state.group_filter == GroupFilter::Favorites,
             ) {
                 state.group_filter = GroupFilter::Favorites;
+                state.main_tab = MainTab::Manager;
+            }
+            let recent_count = data
+                .hosts
+                .iter()
+                .filter(|h| h.last_connected_at.is_some())
+                .count();
+            if tree_row(
+                ui,
+                "🕘",
+                state.t("Recent"),
+                recent_count,
+                state.group_filter == GroupFilter::Recent,
+            ) {
+                state.group_filter = GroupFilter::Recent;
+                state.main_tab = MainTab::Manager;
+            }
+            let freq_count = data.hosts.iter().filter(|h| h.connect_count > 0).count();
+            if tree_row(
+                ui,
+                "🔥",
+                state.t("Frequent"),
+                freq_count,
+                state.group_filter == GroupFilter::Frequent,
+            ) {
+                state.group_filter = GroupFilter::Frequent;
                 state.main_tab = MainTab::Manager;
             }
             ui.add_space(4.0);

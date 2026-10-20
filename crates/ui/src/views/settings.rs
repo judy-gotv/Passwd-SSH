@@ -117,6 +117,55 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
 
             ui.add_space(12.0);
             ui.separator();
+            ui.label(egui::RichText::new(state.t("Credentials")).strong());
+            if data.credentials.is_empty() {
+                ui.label(state.t("No stored credentials."));
+            }
+            for cred in data.credentials {
+                let used = data
+                    .hosts
+                    .iter()
+                    .filter(|h| {
+                        h.credential_id.as_deref() == Some(cred.id.as_str())
+                            || h.passphrase_credential_id.as_deref() == Some(cred.id.as_str())
+                    })
+                    .count();
+                ui.horizontal(|ui| {
+                    ui.label(match cred.kind.as_str() {
+                        "private_key" => "🔑",
+                        "agent" => "👤",
+                        _ => "🔒",
+                    });
+                    ui.label(&cred.name);
+                    if used > 0 {
+                        ui.label(
+                            egui::RichText::new(state.tf(
+                                "used by {n} host(s)",
+                                &[("n", &used.to_string())],
+                            ))
+                            .weak(),
+                        );
+                    }
+                    if ui
+                        .button("🗑")
+                        .on_hover_text(state.t("Delete credential"))
+                        .clicked()
+                    {
+                        state.confirm = Some(crate::ConfirmDialog {
+                            title: state.t("Delete credential").to_string(),
+                            message: state.tf(
+                                "Delete credential {name}? Hosts using it will no longer be able to sign in.",
+                                &[("name", &cred.name)],
+                            ),
+                            confirm_label: state.t("Delete").to_string(),
+                            action: format!("delete_credential:{}", cred.id),
+                        });
+                    }
+                });
+            }
+
+            ui.add_space(12.0);
+            ui.separator();
             ui.label(egui::RichText::new(state.t("Sync")).strong());
             ui.horizontal(|ui| {
                 ui.label(state.t("Mode:"));

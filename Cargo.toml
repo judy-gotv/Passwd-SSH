@@ -24,7 +24,7 @@ members = [
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Passwd Word"]
 repository = "https://github.com/judy-gotv/Passwd-SSH"
 homepage = "https://github.com/judy-gotv/Passwd-SSH"

@@ -102,6 +102,9 @@ pub struct Host {
     pub tags: String,
     pub favorite: bool,
     pub last_connected_at: Option<i64>,
+    /// Successful connection count (drives the Frequent view).
+    #[serde(default)]
+    pub connect_count: i64,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -139,6 +142,7 @@ impl Host {
             tags: "[]".to_string(),
             favorite: false,
             last_connected_at: None,
+            connect_count: 0,
             created_at: now,
             updated_at: now,
         }
