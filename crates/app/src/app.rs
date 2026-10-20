@@ -997,6 +997,7 @@ impl OpsDeckApp {
             let timeout = std::time::Duration::from_secs(
                 host2.connect_timeout_secs.filter(|v| *v > 0).unwrap_or(15) as u64,
             );
+            let username = host2.username.clone();
             let res = tokio::task::spawn_blocking(move || {
                 if kind_for_worker == "vnc" {
                     opsdeck_vnc::connect(
@@ -1007,7 +1008,14 @@ impl OpsDeckApp {
                     )
                     .map_err(|e| e.to_string())
                 } else {
-                    Err("RDP is not available in this build".to_string())
+                    opsdeck_rdp::connect(
+                        &host2.host,
+                        host2.port as u16,
+                        &username,
+                        password.as_deref().unwrap_or(""),
+                        timeout,
+                    )
+                    .map_err(|e| e.to_string())
                 }
             })
             .await;

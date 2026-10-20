@@ -1,0 +1,12 @@
+Vendored picky 7.0.0-rc.25 with a single change: the
+curve25519-dalek requirement was relaxed from "=5.0.0-rc.1"
+to "5" so it unifies with russh's curve25519-dalek 5.0.0.
+The 5.0.0-rc.1 -> 5.0.0 API is unchanged (release only fixed bugs).
+Delete this whole vendor/ directory and the [patch.crates-io]
+section in the workspace Cargo.toml once upstream picky ships
+a stable 7.x that no longer pins the dalek RC.
+Also: ecdsa relaxed from "=0.17.0-rc.22" to "0.17" (russh wants stable 0.17).
+Also: ed25519-dalek relaxed from "=3.0.0-rc.1" to "3" (3.0.0 stable exists; russh uses ^3).
+Also: p256/p384/p521 relaxed from "=0.14.0-rc.14" to "0.14" (russh wants stable 0.14).
+Also: all remaining "=0.14.0-rc.14" elliptic-curve pins relaxed to "0.14".
+Also relaxed: version = "=0.11.0-rc.4", version = "=0.6.0-rc.8", version = "=0.11.0-rc.6"

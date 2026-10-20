@@ -4,6 +4,7 @@
 
 [workspace]
 resolver = "2"
+
 members = [
     "crates/app",
     "crates/ui",
@@ -12,6 +13,7 @@ members = [
     "crates/telnet",
     "crates/desktop",
     "crates/vnc",
+    "crates/rdp",
     "crates/sftp",
     "crates/ops",
     "crates/vault",
@@ -58,3 +60,10 @@ rustls-native-certs = "0.8"
 opt-level = 3
 lto = "thin"
 strip = true
+
+# Patches the picky crate (pinned curve25519-dalek =5.0.0-rc.1 by
+# ironrdp-connector) to accept the stable 5.0.0 line that russh uses.
+# Vendored source, one-line change: see vendor/picky/README.opsdeck.
+[patch.crates-io]
+picky = { path = "vendor/picky" }
+sspi = { path = "vendor/sspi" }

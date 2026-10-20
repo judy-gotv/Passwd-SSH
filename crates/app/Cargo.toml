@@ -33,6 +33,7 @@ opsdeck-sftp = { path = "../sftp" }
 opsdeck-telnet = { path = "../telnet" }
 opsdeck-desktop = { path = "../desktop" }
 opsdeck-vnc = { path = "../vnc" }
+opsdeck-rdp = { path = "../rdp" }
 opsdeck-storage = { path = "../storage" }
 opsdeck-vault = { path = "../vault" }
 opsdeck-ops = { path = "../ops" }

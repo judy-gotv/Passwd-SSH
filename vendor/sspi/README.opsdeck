@@ -1,0 +1,7 @@
+Vendored sspi 0.21.3 with the two dalek RC pins relaxed
+(curve25519-dalek "=5.0.0-rc.1" -> "5", ed25519-dalek "=3.0.0-rc.1" -> "3")
+so versions unify with russh's stable dalek 5.0.0 / 3.0.0.
+Remove with the picky patch once upstream unifies.
+Also: macOS/iOS target-only rc pins relaxed to stable lines
+(p256/p384/p521/primeorder/rustcrypto-* 0.14, pkcs1 0.8, winscard 0.10).
+Note: rsa stays pinned to =0.10.0-rc.18 (no stable 0.10 exists).

@@ -1,0 +1,22 @@
+# OpsDeck RDP crate — IronRDP client driving a shared frame buffer.
+# Author: Passwd Word
+
+[package]
+name = "opsdeck-rdp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "RDP client for OpsDeck (IronRDP) rendering into a shared RGBA frame buffer"
+
+[dependencies]
+ironrdp = { version = "0.17", features = ["client", "rustls", "input"] }
+# Pin sspi to the vendored 0.21.3 (see workspace [patch.crates-io]): older
+# 0.21.x pins curve25519-dalek pre-releases that clash with russh.
+sspi = "=0.21.3"
+tokio.workspace = true
+smallvec = "1.15"
+thiserror.workspace = true
+tracing.workspace = true
+opsdeck-desktop = { path = "../desktop" }
