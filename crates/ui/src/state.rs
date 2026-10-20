@@ -241,6 +241,14 @@ pub struct UiState {
     pub main_tab: MainTab,
     /// Manager protocol tab: "ssh" | "rdp" | "telnet" | "tunnel" | "vnc".
     pub manager_protocol: String,
+    /// Batch-selected hosts in the manager table (checkbox column).
+    pub manager_selected: std::collections::HashSet<String>,
+    /// Whether the manager Info column shows the rich metrics block.
+    pub manager_info_on: bool,
+    /// Host ids awaiting batch-delete confirmation.
+    pub pending_batch_delete: Vec<String>,
+    /// Expanded groups in the left tree (host leaves visible).
+    pub tree_expanded: std::collections::HashSet<String>,
     pub group_filter: GroupFilter,
     pub new_group_name: String,
     pub host_search: String,
@@ -345,6 +353,10 @@ impl UiState {
             vault_unlocked: false,
             main_tab: MainTab::Manager,
             manager_protocol: "ssh".to_string(),
+            manager_selected: std::collections::HashSet::new(),
+            manager_info_on: true,
+            pending_batch_delete: Vec::new(),
+            tree_expanded: std::collections::HashSet::new(),
             group_filter: GroupFilter::All,
             new_group_name: String::new(),
             host_search: String::new(),

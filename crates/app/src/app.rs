@@ -1703,7 +1703,68 @@ impl OpsDeckApp {
                 }
             }
             UiEvent::ImportHosts(json) => self.import_hosts(&json),
-            UiEvent::ExportHosts => self.export_hosts(),
+            UiEvent::ExportHosts => self.export_hosts(None),
+            UiEvent::ExportHostsSelected(ids) => {
+                self.export_hosts(Some(&ids));
+            }
+            UiEvent::DuplicateHosts(ids) => {
+                let mut made = 0usize;
+                for id in &ids {
+                    if let Some(h) = self.cached.hosts.iter().find(|h| &h.id == id).cloned() {
+                        let mut copy = h;
+                        copy.id = uuid::Uuid::new_v4().to_string();
+                        copy.name = format!("{} - copy", copy.name);
+                        copy.connect_count = 0;
+                        copy.last_connected_at = None;
+                        let storage = self.storage.clone();
+                        tokio::spawn(async move {
+                            let _ = storage.hosts().create(&copy).await;
+                        });
+                        made += 1;
+                    }
+                }
+                if made > 0 {
+                    self.cache_dirty = true;
+                    self.state.toast(self.state.t("Hosts duplicated"), false);
+                }
+            }
+            UiEvent::DeleteHosts(ids) => {
+                // Orphan cleanup across the whole batch.
+                let remaining: Vec<&opsdeck_storage::models::Host> = self
+                    .cached
+                    .hosts
+                    .iter()
+                    .filter(|h| !ids.contains(&h.id))
+                    .collect();
+                let mut orphans: Vec<String> = Vec::new();
+                for id in &ids {
+                    if let Some(h) = self.cached.hosts.iter().find(|h| &h.id == id) {
+                        for cid in [h.credential_id.clone(), h.passphrase_credential_id.clone()]
+                            .into_iter()
+                            .flatten()
+                        {
+                            let used = remaining.iter().any(|o| {
+                                o.credential_id.as_deref() == Some(cid.as_str())
+                                    || o.passphrase_credential_id.as_deref() == Some(cid.as_str())
+                            });
+                            if !used && !orphans.contains(&cid) {
+                                orphans.push(cid);
+                            }
+                        }
+                    }
+                }
+                let storage = self.storage.clone();
+                tokio::spawn(async move {
+                    for id in &ids {
+                        let _ = storage.hosts().delete(id).await;
+                    }
+                    for cid in orphans {
+                        let _ = storage.credentials().delete(&cid).await;
+                    }
+                });
+                self.cache_dirty = true;
+                self.state.toast(self.state.t("Hosts deleted"), false);
+            }
             UiEvent::PingHosts => self.spawn_ping(),
             UiEvent::CreateGroup(name) => {
                 let storage = self.storage.clone();
@@ -2571,8 +2632,17 @@ impl OpsDeckApp {
         }
     }
 
-    fn export_hosts(&mut self) {
-        let hosts = self.cached.hosts.clone();
+    fn export_hosts(&mut self, only: Option<&[String]>) {
+        let hosts: Vec<opsdeck_storage::models::Host> = match only {
+            Some(ids) => self
+                .cached
+                .hosts
+                .iter()
+                .filter(|h| ids.contains(&h.id))
+                .cloned()
+                .collect(),
+            None => self.cached.hosts.clone(),
+        };
         let groups = self.cached.groups.clone();
         let data = ExportData::new(hosts, groups, Vec::new());
         match serde_json::to_string_pretty(&data) {

@@ -115,8 +115,21 @@ pub fn left_panel(
                     .filter(|h| h.group_id.as_deref() == Some(group.id.as_str()))
                     .count();
                 let selected = state.group_filter == GroupFilter::Group(group.id.clone());
+                let expanded = state.tree_expanded.contains(&group.id);
                 let mut delete = false;
                 ui.horizontal(|ui| {
+                    // Small chevron toggles the host leaves (Xterminal tree).
+                    let chev = if expanded { "▾" } else { "▸" };
+                    if ui
+                        .add(egui::Button::new(egui::RichText::new(chev).size(10.0)).frame(false))
+                        .clicked()
+                    {
+                        if expanded {
+                            state.tree_expanded.remove(&group.id);
+                        } else {
+                            state.tree_expanded.insert(group.id.clone());
+                        }
+                    }
                     if tree_row(ui, "📁", &group.name, count, selected) {
                         state.group_filter = GroupFilter::Group(group.id.clone());
                         state.main_tab = MainTab::Manager;
@@ -129,6 +142,30 @@ pub fn left_panel(
                         delete = true;
                     }
                 });
+                if expanded {
+                    for host in data
+                        .hosts
+                        .iter()
+                        .filter(|h| h.group_id.as_deref() == Some(group.id.as_str()))
+                    {
+                        ui.horizontal(|ui| {
+                            ui.add_space(34.0);
+                            let is_sel = state.selected_host.as_deref() == Some(host.id.as_str());
+                            let resp = ui.selectable_label(
+                                is_sel,
+                                egui::RichText::new(format!("· {}", host.name)).small(),
+                            );
+                            if resp.clicked() {
+                                state.selected_host = Some(host.id.clone());
+                                state.group_filter = GroupFilter::Group(group.id.clone());
+                                state.main_tab = MainTab::Manager;
+                            }
+                            if resp.double_clicked() {
+                                events.push(UiEvent::ConnectHost(host.id.clone()));
+                            }
+                        });
+                    }
+                }
                 if delete {
                     state.confirm = Some(crate::ConfirmDialog {
                         title: state.t("Delete group").to_string(),

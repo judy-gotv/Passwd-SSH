@@ -53,7 +53,7 @@ impl Language {
     }
 
     /// Translate an English source string. Falls back to the source itself.
-    pub fn tr(&self, key: &'static str) -> &'static str {
+    pub fn tr<'a>(&self, key: &'a str) -> &'a str {
         let table: &[(&str, &str)] = match self {
             Language::En => return key,
             Language::ZhCn => ZH_CN,
@@ -81,6 +81,10 @@ static ZH_CN: &[(&str, &str)] = &[
     ("/path/to/local/file", "/本地文件路径"),
     ("/path/to/synced/folder", "/同步文件夹路径"),
     ("0 = off, empty = 30", "0=关闭，空=30"),
+    (
+        "A local-first SSH workstation. Your data stays on your machine.",
+        "本地优先的 SSH 工作站，数据只留在你的机器上。",
+    ),
     ("About", "关于"),
     ("Action", "操作"),
     ("Actions", "操作"),
@@ -89,9 +93,17 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Agent", "代理"),
     ("All hosts", "全部主机"),
     ("Allow dangerous commands", "允许危险命令"),
+    (
+        "Any folder replicated by Syncthing / Nextcloud / rsync works.",
+        "任何由 Syncthing / Nextcloud / rsync 同步的文件夹都可以。",
+    ),
     ("Appearance", "外观"),
     ("Auth:", "认证方式："),
     ("Auto refresh", "自动刷新"),
+    (
+        "Bad bind address (use 127.0.0.1:8080)",
+        "监听地址无效（示例 127.0.0.1:8080）",
+    ),
     ("Bad host config: {e}", "主机配置错误：{e}"),
     ("Basic info", "基本信息"),
     ("Batch run", "批量执行"),
@@ -108,6 +120,10 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Check for updates", "检查更新"),
     ("Clear output", "清空输出"),
     ("Click to capture the keyboard", "点击捕获键盘输入"),
+    (
+        "Click “＋ New” to add your first server.",
+        "点击「＋ 新建」添加你的第一台服务器。",
+    ),
     ("Close", "关闭"),
     ("Close desktop", "关闭桌面"),
     ("Close tab", "关闭标签页"),
@@ -119,6 +135,11 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Confirm new:", "确认新密码："),
     ("Confirm password", "确认密码"),
     ("Connect", "连接"),
+    ("Connect all", "并发"),
+    (
+        "Connect the host first (Terminal tab)",
+        "请先连接主机（终端页）",
+    ),
     ("Connect timeout (sec):", "连接超时（秒）:"),
     ("Connected to {name}", "已连接到 {name}"),
     ("Connecting to {title}…", "正在连接到 {title}…"),
@@ -130,41 +151,71 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Copy", "复制"),
     ("Copy path", "复制路径"),
     ("Copy selection", "复制所选内容"),
+    ("Cores", "核心"),
+    ("Could not find the Downloads folder", "找不到下载文件夹"),
     ("Create", "创建"),
+    (
+        "Create a master password. It encrypts all stored credentials.",
+        "设置一个主密码，用于加密保存所有凭据。",
+    ),
     ("Create directory", "创建目录"),
     ("Create vault", "创建密码库"),
     ("Credential", "凭据"),
     ("Credential deleted", "凭据已删除"),
     ("Credentials", "凭据"),
+    (
+        "Credentials never leave this device unencrypted.\nThere is no password recovery — don't forget it.",
+        "凭据绝不会以未加密形式离开这台设备。\n主密码无法找回——千万别忘了。",
+    ),
     ("Current password is wrong", "当前密码错误"),
     ("Current password:", "当前密码："),
     ("Current version: {current}", "当前版本：{current}"),
     ("Default path:", "默认路径:"),
     ("Delete", "删除"),
     ("Delete credential", "删除凭据"),
+    (
+        "Delete credential {name}? Hosts using it will no longer be able to sign in.",
+        "删除凭据 {name}？使用它的主机将无法再登录。",
+    ),
     ("Delete group", "删除分组"),
     ("Delete group “{name}”?", "删除分组“{name}”？"),
     ("Delete host", "删除主机"),
     ("Delete host “{name}”?", "删除主机“{name}”吗？"),
     ("Delete snippet", "删除代码片段"),
     ("Delete snippet “{title}”?", "删除代码片段“{title}”吗？"),
+    ("Delete {n} hosts?", "删除 {n} 台主机？"),
     ("Delete {path}?", "删除 {path}？"),
     ("Delete “{path}”?", "删除“{path}”吗？"),
     ("Description:", "描述："),
     ("Desktop session is gone", "桌面会话已关闭"),
     ("Disconnect", "断开连接"),
+    ("Disk", "磁盘"),
     ("Disk /", "磁盘 /"),
     ("Disk usage", "磁盘占用"),
     ("Download", "下载"),
     ("Download dir:", "下载目录："),
     ("Download queued", "下载已加入队列"),
     ("Downloading to {path}", "正在下载到 {path}"),
+    ("Duplicate", "复制"),
     ("Edit", "编辑"),
     ("Edit host", "编辑主机"),
     ("Edit repository password", "编辑仓库密码"),
     ("Edit snippet", "编辑代码片段"),
     ("Enter a command first", "请先输入命令"),
+    (
+        "Enter a password or private key, or pick an existing credential.",
+        "请输入密码或私钥，或选择一个已有凭据。",
+    ),
+    (
+        "Enter your master password to unlock.",
+        "输入主密码以解锁。",
+    ),
+    (
+        "Env vars (KEY=value per line):",
+        "环境变量（每行一个 KEY=value）：",
+    ),
     ("Error: {err}", "错误：{err}"),
+    ("Export", "导出"),
     ("Export failed: {e}", "导出失败：{e}"),
     ("Export hosts…", "导出主机…"),
     ("Exported to {path}", "已导出到 {path}"),
@@ -179,6 +230,10 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Folder:", "文件夹："),
     ("Forward stopped", "转发已停止"),
     ("Forwarding {local}", "正在转发 {local}"),
+    (
+        "Forwards live as long as their SSH session. Start one from a connected session.",
+        "转发随其 SSH 会话存续。请从已连接的会话发起。",
+    ),
     ("Free", "空闲"),
     ("Frequent", "常用"),
     ("Go", "前往"),
@@ -186,6 +241,10 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Group deleted", "分组已删除"),
     ("Group:", "分组："),
     ("Groups", "分组"),
+    (
+        "HTTP CONNECT and SOCKS5 are supported.",
+        "支持 HTTP CONNECT 与 SOCKS5。",
+    ),
     ("Help", "帮助"),
     ("Host deleted", "主机已删除"),
     ("Host is required.", "主机地址不能为空。"),
@@ -195,11 +254,14 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Host:", "主机："),
     ("Host: {host}:{port}", "主机：{host}:{port}"),
     ("Hosts", "主机"),
+    ("Hosts deleted", "主机已删除"),
+    ("Hosts duplicated", "主机已复制"),
     ("Import", "导入"),
     ("Import failed: {e}", "导入失败：{e}"),
     ("Import hosts", "导入主机"),
     ("Import hosts…", "导入主机…"),
     ("Imported {count} host(s)", "已导入 {count} 台主机"),
+    ("Info", "信息"),
     ("Init", "初始化"),
     ("Invalid name", "名称无效"),
     ("Jump chain too deep", "跳板链太深"),
@@ -237,6 +299,7 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Name is required.", "名称不能为空。"),
     ("Name:", "名称："),
     ("Network", "网络"),
+    ("Network speed", "网速"),
     ("New", "新建"),
     ("New directory:", "新目录名："),
     ("New file", "新建文件"),
@@ -244,9 +307,17 @@ static ZH_CN: &[(&str, &str)] = &[
     ("New folder", "新建文件夹"),
     ("New folder…", "新建文件夹…"),
     ("New group", "新建分组"),
+    (
+        "New password must be at least 8 characters",
+        "新密码至少 8 个字符",
+    ),
     ("New password:", "新密码："),
     ("New passwords do not match", "两次输入的新密码不一致"),
     ("New port forward", "新建端口转发"),
+    (
+        "New port forward (local → remote)",
+        "新建端口转发（本地 → 远程）",
+    ),
     ("New snippet", "新建代码片段"),
     ("New tab (Ctrl+T)", "新标签页 (Ctrl+T)"),
     ("New terminal tab", "新建终端标签页"),
@@ -257,13 +328,25 @@ static ZH_CN: &[(&str, &str)] = &[
     ("No active terminal to split", "没有可分屏的活动终端"),
     ("No hosts yet.", "还没有主机。"),
     ("No open sessions", "没有打开的会话"),
+    (
+        "No snippets yet. Built-in examples are seeded on first run.",
+        "还没有代码片段。首次运行时会预置内置示例。",
+    ),
     ("No stored credentials.", "还没有保存的凭据。"),
     ("No terminal tabs", "没有终端标签页"),
     ("No transfers yet.", "还没有传输任务。"),
+    (
+        "No vault yet — set a master password so credentials can be stored encrypted.",
+        "还没有密码库——设置主密码后，凭据才能加密保存。",
+    ),
     ("Note:", "备注:"),
     ("Nothing to import", "没有可导入的内容"),
     ("OK", "确定"),
     ("Off", "关闭"),
+    (
+        "Only hosts, groups and snippets sync — and always end-to-end encrypted. Credentials never leave this device.",
+        "只有主机、分组和片段会同步，且全程端到端加密。凭据绝不离开这台设备。",
+    ),
     ("Open", "打开"),
     ("Open SFTP", "打开 SFTP"),
     ("Open in Files", "在文件页打开"),
@@ -281,9 +364,17 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Passwords do not match.", "两次输入的密码不一致。"),
     ("Paste", "粘贴"),
     ("Paste JSON here…", "在此粘贴 JSON…"),
+    (
+        "Paste the exported JSON below, then confirm.",
+        "把导出的 JSON 粘贴到下方，然后确认。",
+    ),
     ("Pause", "暂停"),
     ("Permissions", "权限"),
     ("Perms", "权限"),
+    (
+        "Pick a session and enter a valid remote host/port",
+        "请选择会话并填写有效的远程主机/端口",
+    ),
     ("Port forward failed: {error}", "端口转发失败：{error}"),
     ("Port forwarding…", "端口转发…"),
     ("Port must be a number.", "端口必须是数字。"),
@@ -324,7 +415,15 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Select a file or folder first", "请先选中一个文件或文件夹"),
     ("Select a file to download", "请先选中一个文件再下载"),
     ("Select a file to edit", "请先选中一个文件再编辑"),
+    (
+        "Select a host on the left and press ▶ or double-click to connect.",
+        "在左侧选一台主机，按 ▶ 或双击连接。",
+    ),
     ("Select a host on the left first", "请先在左侧选择一台主机"),
+    (
+        "Select a host to browse its files.",
+        "选择一台主机以浏览其文件。",
+    ),
     ("Select a host to monitor.", "选择一台主机进行监控。"),
     ("Select at least one session", "请至少选择一个会话"),
     ("Server:", "服务器："),
@@ -334,11 +433,19 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Session:", "会话："),
     ("Sessions", "会话"),
     ("Set master password", "设置主密码"),
+    (
+        "Set up sync in Settings to use a cloud repository",
+        "在设置中配置同步后才能使用云端仓库",
+    ),
     ("Settings", "设置"),
     ("Shared folder", "共享文件夹"),
     ("Size", "大小"),
     ("Snippets", "代码片段"),
     ("Split left/right", "左右分屏"),
+    (
+        "Split left/right    Ctrl+Shift+E",
+        "左右分屏    Ctrl+Shift+E",
+    ),
     ("Split left/right (Ctrl+Shift+E)", "左右分屏 (Ctrl+Shift+E)"),
     ("Split up/down", "上下分屏"),
     ("Split up/down    Ctrl+Shift+O", "上下分屏    Ctrl+Shift+O"),
@@ -350,6 +457,10 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Sync complete", "同步完成"),
     ("Sync error: {err}", "同步错误：{err}"),
     ("Sync failed: {e}", "同步失败：{e}"),
+    (
+        "Sync is off — pick a mode in Settings",
+        "同步未开启——在设置中选择同步模式",
+    ),
     ("Sync now", "立即同步"),
     ("Sync server", "同步服务器"),
     ("Syncing…", "同步中…"),
@@ -362,8 +473,16 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Terminal type:", "终端类型:"),
     ("Test connection", "测试连接"),
     ("Testing connection…", "正在测试连接…"),
+    (
+        "The host must be connected. Metrics are polled every few seconds.",
+        "主机必须已连接。指标每几秒轮询一次。",
+    ),
     ("Theme", "主题"),
     ("Theme:", "主题："),
+    (
+        "This server is not in your known-hosts database:",
+        "这台服务器不在你的已知主机库中：",
+    ),
     ("Title and command are required", "标题和命令不能为空"),
     ("Title:", "标题："),
     ("Toggle favorite", "切换收藏"),
@@ -388,14 +507,27 @@ static ZH_CN: &[(&str, &str)] = &[
     ("Upload into {dir}", "上传到 {dir}"),
     ("Upload local file:", "上传本地文件："),
     ("Upload queued", "上传已加入队列"),
+    ("Upload to cloud", "上云"),
     ("Uptime", "运行时间"),
     ("Use at least 8 characters.", "请至少使用 8 个字符。"),
     ("Used", "已用"),
     ("Username is required.", "用户名不能为空。"),
     ("Username:", "用户名："),
+    (
+        "Uses your local SSH agent (no stored secret).",
+        "使用你本地的 SSH 代理（不保存任何密钥）。",
+    ),
     ("Vault", "密码库"),
     ("Vault created", "密码库已创建"),
     ("Vault is locked", "保险库已锁定"),
+    (
+        "Vault is locked — unlock it to connect.",
+        "密码库已锁定——解锁后才能连接。",
+    ),
+    (
+        "Vault is locked — unlock it to save this host.",
+        "密码库已锁定——解锁后才能保存这台主机。",
+    ),
     ("Vault is locked.", "保险库已锁定。"),
     ("Vault is unlocked.", "保险库已解锁。"),
     ("Vault locked", "保险库已锁定"),
@@ -419,7 +551,12 @@ static ZH_CN: &[(&str, &str)] = &[
     ("sync on", "同步已开启"),
     ("used by {n} host(s)", "被 {n} 台主机使用"),
     ("{name}: connection closed", "{name}：连接已关闭"),
+    ("{n} selected", "已选 {n} 项"),
     ("{n} session(s)", "{n} 个会话"),
+    (
+        "{user}@{host}:{port}\nDouble-click to connect",
+        "{user}@{host}:{port}\n双击连接",
+    ),
     ("— new —", "— 新建 —"),
     ("— none —", "— 无 —"),
     ("— select —", "— 请选择 —"),
@@ -428,6 +565,14 @@ static ZH_CN: &[(&str, &str)] = &[
     ("▶ Run on selected", "▶ 在选中项上运行"),
     ("★ Favorite", "★ 收藏"),
     ("★ Favorites", "★ 收藏"),
+    (
+        "⚠ WARNING: the host key CHANGED. This may indicate a man-in-the-middle attack.",
+        "⚠ 警告：主机密钥已变更。可能存在中间人攻击。",
+    ),
+    (
+        "⚠ {n} host key approval(s) pending",
+        "⚠ {n} 个主机密钥待确认",
+    ),
     ("✏️ Edit", "✏️ 编辑"),
     ("⤒ Import", "⤒ 导入"),
     ("⤓ Export", "⤓ 导出"),
@@ -448,6 +593,10 @@ static ZH_TW: &[(&str, &str)] = &[
     ("/path/to/local/file", "/本機檔案路徑"),
     ("/path/to/synced/folder", "/同步資料夾路徑"),
     ("0 = off, empty = 30", "0=關閉，空=30"),
+    (
+        "A local-first SSH workstation. Your data stays on your machine.",
+        "本地優先的 SSH 工作站，資料只留在你的機器上。",
+    ),
     ("About", "關於"),
     ("Action", "操作"),
     ("Actions", "操作"),
@@ -456,9 +605,17 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Agent", "代理"),
     ("All hosts", "全部主機"),
     ("Allow dangerous commands", "允許危險命令"),
+    (
+        "Any folder replicated by Syncthing / Nextcloud / rsync works.",
+        "任何由 Syncthing / Nextcloud / rsync 同步的資料夾都可以。",
+    ),
     ("Appearance", "外觀"),
     ("Auth:", "驗證方式："),
     ("Auto refresh", "自動重新整理"),
+    (
+        "Bad bind address (use 127.0.0.1:8080)",
+        "監聽位址無效（範例 127.0.0.1:8080）",
+    ),
     ("Bad host config: {e}", "主機設定錯誤：{e}"),
     ("Basic info", "基本資訊"),
     ("Batch run", "批次執行"),
@@ -475,6 +632,10 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Check for updates", "檢查更新"),
     ("Clear output", "清除輸出"),
     ("Click to capture the keyboard", "點擊擷取鍵盤輸入"),
+    (
+        "Click “＋ New” to add your first server.",
+        "點擊「＋ 新增」加入你的第一台伺服器。",
+    ),
     ("Close", "關閉"),
     ("Close desktop", "關閉桌面"),
     ("Close tab", "關閉標籤頁"),
@@ -486,6 +647,11 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Confirm new:", "確認新密碼："),
     ("Confirm password", "確認密碼"),
     ("Connect", "連線"),
+    ("Connect all", "並發"),
+    (
+        "Connect the host first (Terminal tab)",
+        "請先連接主機（終端頁）",
+    ),
     ("Connect timeout (sec):", "連線逾時（秒）:"),
     ("Connected to {name}", "已連線到 {name}"),
     ("Connecting to {title}…", "正在連線到 {title}…"),
@@ -497,41 +663,71 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Copy", "複製"),
     ("Copy path", "複製路徑"),
     ("Copy selection", "複製所選內容"),
+    ("Cores", "核心"),
+    ("Could not find the Downloads folder", "找不到下載資料夾"),
     ("Create", "建立"),
+    (
+        "Create a master password. It encrypts all stored credentials.",
+        "設定一個主密碼，用於加密保存所有憑證。",
+    ),
     ("Create directory", "建立目錄"),
     ("Create vault", "建立密碼庫"),
     ("Credential", "憑證"),
     ("Credential deleted", "憑據已刪除"),
     ("Credentials", "憑據"),
+    (
+        "Credentials never leave this device unencrypted.\nThere is no password recovery — don't forget it.",
+        "憑證絕不會以未加密形式離開這台裝置。\n主密碼無法找回——千萬別忘了。",
+    ),
     ("Current password is wrong", "目前密碼錯誤"),
     ("Current password:", "目前密碼："),
     ("Current version: {current}", "目前版本：{current}"),
     ("Default path:", "預設路徑:"),
     ("Delete", "刪除"),
     ("Delete credential", "刪除憑據"),
+    (
+        "Delete credential {name}? Hosts using it will no longer be able to sign in.",
+        "刪除憑證 {name}？使用它的主機將無法再登入。",
+    ),
     ("Delete group", "刪除分組"),
     ("Delete group “{name}”?", "刪除分組「{name}」？"),
     ("Delete host", "刪除主機"),
     ("Delete host “{name}”?", "確定刪除主機「{name}」嗎？"),
     ("Delete snippet", "刪除程式碼片段"),
     ("Delete snippet “{title}”?", "刪除片段「{title}」？"),
+    ("Delete {n} hosts?", "刪除 {n} 台主機？"),
     ("Delete {path}?", "刪除 {path}？"),
     ("Delete “{path}”?", "確定刪除「{path}」嗎？"),
     ("Description:", "描述："),
     ("Desktop session is gone", "桌面會話已關閉"),
     ("Disconnect", "中斷連線"),
+    ("Disk", "磁碟"),
     ("Disk /", "磁碟 /"),
     ("Disk usage", "磁碟使用"),
     ("Download", "下載"),
     ("Download dir:", "下載目錄："),
     ("Download queued", "下載已加入佇列"),
     ("Downloading to {path}", "正在下載到 {path}"),
+    ("Duplicate", "複製"),
     ("Edit", "編輯"),
     ("Edit host", "編輯主機"),
     ("Edit repository password", "編輯倉庫密碼"),
     ("Edit snippet", "編輯程式碼片段"),
     ("Enter a command first", "請先輸入命令"),
+    (
+        "Enter a password or private key, or pick an existing credential.",
+        "請輸入密碼或私鑰，或選擇一個已有憑證。",
+    ),
+    (
+        "Enter your master password to unlock.",
+        "輸入主密碼以解鎖。",
+    ),
+    (
+        "Env vars (KEY=value per line):",
+        "環境變數（每行一個 KEY=value）：",
+    ),
     ("Error: {err}", "錯誤：{err}"),
+    ("Export", "匯出"),
     ("Export failed: {e}", "匯出失敗：{e}"),
     ("Export hosts…", "匯出主機…"),
     ("Exported to {path}", "已匯出到 {path}"),
@@ -546,6 +742,10 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Folder:", "資料夾："),
     ("Forward stopped", "轉發已停止"),
     ("Forwarding {local}", "正在轉發 {local}"),
+    (
+        "Forwards live as long as their SSH session. Start one from a connected session.",
+        "轉發隨其 SSH 工作階段存續。請從已連接的工作階段發起。",
+    ),
     ("Free", "閒置"),
     ("Frequent", "常用"),
     ("Go", "前往"),
@@ -553,6 +753,10 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Group deleted", "分組已刪除"),
     ("Group:", "群組："),
     ("Groups", "分組"),
+    (
+        "HTTP CONNECT and SOCKS5 are supported.",
+        "支援 HTTP CONNECT 與 SOCKS5。",
+    ),
     ("Help", "說明"),
     ("Host deleted", "主機已刪除"),
     ("Host is required.", "主機位址不能為空。"),
@@ -562,11 +766,14 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Host:", "主機："),
     ("Host: {host}:{port}", "主機：{host}:{port}"),
     ("Hosts", "主機"),
+    ("Hosts deleted", "主機已刪除"),
+    ("Hosts duplicated", "主機已複製"),
     ("Import", "匯入"),
     ("Import failed: {e}", "匯入失敗：{e}"),
     ("Import hosts", "匯入主機"),
     ("Import hosts…", "匯入主機…"),
     ("Imported {count} host(s)", "已匯入 {count} 台主機"),
+    ("Info", "資訊"),
     ("Init", "初始化"),
     ("Invalid name", "名稱無效"),
     ("Jump chain too deep", "跳板鏈太深"),
@@ -604,6 +811,7 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Name is required.", "名稱不能為空。"),
     ("Name:", "名稱："),
     ("Network", "網路"),
+    ("Network speed", "網速"),
     ("New", "新增"),
     ("New directory:", "新目錄名稱："),
     ("New file", "新增檔案"),
@@ -611,9 +819,17 @@ static ZH_TW: &[(&str, &str)] = &[
     ("New folder", "新增資料夾"),
     ("New folder…", "新增資料夾…"),
     ("New group", "新建分組"),
+    (
+        "New password must be at least 8 characters",
+        "新密碼至少 8 個字元",
+    ),
     ("New password:", "新密碼："),
     ("New passwords do not match", "兩次輸入的新密碼不一致"),
     ("New port forward", "新增連接埠轉送"),
+    (
+        "New port forward (local → remote)",
+        "新建連接埠轉發（本地 → 遠端）",
+    ),
     ("New snippet", "新增程式碼片段"),
     ("New tab (Ctrl+T)", "新標籤頁 (Ctrl+T)"),
     ("New terminal tab", "新增終端標籤頁"),
@@ -624,13 +840,25 @@ static ZH_TW: &[(&str, &str)] = &[
     ("No active terminal to split", "沒有可分割的作用中終端"),
     ("No hosts yet.", "尚無主機。"),
     ("No open sessions", "沒有開啟的連線"),
+    (
+        "No snippets yet. Built-in examples are seeded on first run.",
+        "還沒有程式碼片段。首次執行時會預置內置範例。",
+    ),
     ("No stored credentials.", "還沒有儲存的憑據。"),
     ("No terminal tabs", "沒有終端標籤頁"),
     ("No transfers yet.", "尚無傳輸任務。"),
+    (
+        "No vault yet — set a master password so credentials can be stored encrypted.",
+        "還沒有密碼庫——設定主密碼後，憑證才能加密保存。",
+    ),
     ("Note:", "備註:"),
     ("Nothing to import", "沒有可匯入的內容"),
     ("OK", "確定"),
     ("Off", "關閉"),
+    (
+        "Only hosts, groups and snippets sync — and always end-to-end encrypted. Credentials never leave this device.",
+        "只有主機、群組和片段會同步，且全程端到端加密。憑證絕不離開這台裝置。",
+    ),
     ("Open", "開啟"),
     ("Open SFTP", "開啟 SFTP"),
     ("Open in Files", "在文件頁開啟"),
@@ -648,9 +876,17 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Passwords do not match.", "兩次輸入的密碼不一致。"),
     ("Paste", "貼上"),
     ("Paste JSON here…", "在此貼上 JSON…"),
+    (
+        "Paste the exported JSON below, then confirm.",
+        "把匯出的 JSON 貼到下方，然後確認。",
+    ),
     ("Pause", "暫停"),
     ("Permissions", "權限"),
     ("Perms", "權限"),
+    (
+        "Pick a session and enter a valid remote host/port",
+        "請選擇工作階段並填寫有效的遠端主機/連接埠",
+    ),
     ("Port forward failed: {error}", "通訊埠轉發失敗：{error}"),
     ("Port forwarding…", "通訊埠轉發…"),
     ("Port must be a number.", "通訊埠必須是數字。"),
@@ -691,7 +927,15 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Select a file or folder first", "請先選中一個檔案或資料夾"),
     ("Select a file to download", "請先選中一個檔案再下載"),
     ("Select a file to edit", "請先選中一個檔案再編輯"),
+    (
+        "Select a host on the left and press ▶ or double-click to connect.",
+        "在左側選一台主機，按 ▶ 或雙擊連接。",
+    ),
     ("Select a host on the left first", "請先在左側選擇一台主機"),
+    (
+        "Select a host to browse its files.",
+        "選擇一台主機以瀏覽其檔案。",
+    ),
     ("Select a host to monitor.", "選擇一台主機進行監控。"),
     ("Select at least one session", "請至少選擇一個連線"),
     ("Server:", "伺服器："),
@@ -701,11 +945,19 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Session:", "連線："),
     ("Sessions", "連線"),
     ("Set master password", "設定主密碼"),
+    (
+        "Set up sync in Settings to use a cloud repository",
+        "在設定中配置同步後才能使用雲端倉庫",
+    ),
     ("Settings", "設定"),
     ("Shared folder", "共用資料夾"),
     ("Size", "大小"),
     ("Snippets", "程式碼片段"),
     ("Split left/right", "左右分割"),
+    (
+        "Split left/right    Ctrl+Shift+E",
+        "左右分屏    Ctrl+Shift+E",
+    ),
     ("Split left/right (Ctrl+Shift+E)", "左右分割 (Ctrl+Shift+E)"),
     ("Split up/down", "上下分割"),
     ("Split up/down    Ctrl+Shift+O", "上下分割    Ctrl+Shift+O"),
@@ -717,6 +969,10 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Sync complete", "同步完成"),
     ("Sync error: {err}", "同步錯誤：{err}"),
     ("Sync failed: {e}", "同步失敗：{e}"),
+    (
+        "Sync is off — pick a mode in Settings",
+        "同步未開啟——在設定中選擇同步模式",
+    ),
     ("Sync now", "立即同步"),
     ("Sync server", "同步伺服器"),
     ("Syncing…", "同步中…"),
@@ -729,8 +985,16 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Terminal type:", "終端機類型:"),
     ("Test connection", "測試連線"),
     ("Testing connection…", "正在測試連線…"),
+    (
+        "The host must be connected. Metrics are polled every few seconds.",
+        "主機必須已連接。指標每幾秒輪詢一次。",
+    ),
     ("Theme", "主題"),
     ("Theme:", "主題："),
+    (
+        "This server is not in your known-hosts database:",
+        "這台伺服器不在你的已知主機庫中：",
+    ),
     ("Title and command are required", "標題和命令不能為空"),
     ("Title:", "標題："),
     ("Toggle favorite", "切換收藏"),
@@ -755,14 +1019,27 @@ static ZH_TW: &[(&str, &str)] = &[
     ("Upload into {dir}", "上傳到 {dir}"),
     ("Upload local file:", "上傳本機檔案："),
     ("Upload queued", "上傳已加入佇列"),
+    ("Upload to cloud", "上雲"),
     ("Uptime", "運行時間"),
     ("Use at least 8 characters.", "請至少使用 8 個字元。"),
     ("Used", "已用"),
     ("Username is required.", "使用者名稱不能為空。"),
     ("Username:", "使用者名稱："),
+    (
+        "Uses your local SSH agent (no stored secret).",
+        "使用你本地的 SSH 代理（不保存任何密鑰）。",
+    ),
     ("Vault", "密碼庫"),
     ("Vault created", "密碼庫已建立"),
     ("Vault is locked", "保險庫已鎖定"),
+    (
+        "Vault is locked — unlock it to connect.",
+        "密碼庫已鎖定——解鎖後才能連接。",
+    ),
+    (
+        "Vault is locked — unlock it to save this host.",
+        "密碼庫已鎖定——解鎖後才能保存這台主機。",
+    ),
     ("Vault is locked.", "保險庫已鎖定。"),
     ("Vault is unlocked.", "保險庫已解鎖。"),
     ("Vault locked", "保險庫已鎖定"),
@@ -786,7 +1063,12 @@ static ZH_TW: &[(&str, &str)] = &[
     ("sync on", "同步已開啟"),
     ("used by {n} host(s)", "被 {n} 台主機使用"),
     ("{name}: connection closed", "{name}：連線已關閉"),
+    ("{n} selected", "已選 {n} 項"),
     ("{n} session(s)", "{n} 個連線"),
+    (
+        "{user}@{host}:{port}\nDouble-click to connect",
+        "{user}@{host}:{port}\n雙擊連接",
+    ),
     ("— new —", "— 新增 —"),
     ("— none —", "— 無 —"),
     ("— select —", "— 請選擇 —"),
@@ -795,6 +1077,14 @@ static ZH_TW: &[(&str, &str)] = &[
     ("▶ Run on selected", "▶ 在選取項目上執行"),
     ("★ Favorite", "★ 收藏"),
     ("★ Favorites", "★ 收藏"),
+    (
+        "⚠ WARNING: the host key CHANGED. This may indicate a man-in-the-middle attack.",
+        "⚠ 警告：主機金鑰已變更。可能存在中間人攻擊。",
+    ),
+    (
+        "⚠ {n} host key approval(s) pending",
+        "⚠ {n} 個主機金鑰待確認",
+    ),
     ("✏️ Edit", "✏️ 編輯"),
     ("⤒ Import", "⤒ 匯入"),
     ("⤓ Export", "⤓ 匯出"),
@@ -820,6 +1110,112 @@ mod tests {
                 assert!(p < *k, "table not sorted or duplicate: {p:?} vs {k:?}");
             }
             prev = Some(k);
+        }
+    }
+
+    /// Regression guard: every literal key passed to `t()`/`tf()` anywhere
+    /// in the ui/app sources must have a real translation in BOTH tables
+    /// (a missing key silently falls back to English in the UI).
+    #[test]
+    fn all_source_keys_translated() {
+        const ALLOW_SAME: &[&str] = &["CPU", "CPU %", "PID", "OpsDeck {current}"];
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut files = Vec::new();
+        let mut stack = vec![root.join("src")];
+        // The app crate lives next door; scan it too.
+        stack.push(root.join("../app/src"));
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read src dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "rs")
+                    && path.file_name().is_some_and(|n| n != "i18n.rs")
+                {
+                    // (i18n.rs itself is excluded: this test's own source
+                    // contains the search patterns as string literals.)
+                    files.push(path);
+                }
+            }
+        }
+        let mut keys: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for file in &files {
+            let text = std::fs::read_to_string(file).expect("read rs file");
+            let bytes = text.as_bytes();
+            let mut i = 0;
+            while i < bytes.len() {
+                // Find `.t(` or `.tf(` then the string literal.
+                if bytes[i] == b'.' {
+                    let rest = &text[i..];
+                    let after = if rest.starts_with(".tf(") || rest.starts_with(".tr(") {
+                        Some(i + 4)
+                    } else if rest.starts_with(".t(") {
+                        Some(i + 3)
+                    } else {
+                        None
+                    };
+                    if let Some(mut j) = after {
+                        while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                            j += 1;
+                        }
+                        if j < bytes.len() && bytes[j] == b'"' {
+                            j += 1;
+                            let mut key = String::new();
+                            while j < bytes.len() && bytes[j] != b'"' {
+                                if bytes[j] == b'\\' && j + 1 < bytes.len() {
+                                    match bytes[j + 1] {
+                                        b'n' => key.push('\n'),
+                                        b'"' => key.push('"'),
+                                        b'\\' => key.push('\\'),
+                                        other => key.push(other as char),
+                                    }
+                                    j += 2;
+                                } else {
+                                    // Copy one UTF-8 char.
+                                    let ch_len = utf8_len(bytes[j]);
+                                    key.push_str(&text[j..j + ch_len]);
+                                    j += ch_len;
+                                }
+                            }
+                            if !key.is_empty() {
+                                keys.insert(key);
+                            }
+                            i = j;
+                            continue;
+                        }
+                    }
+                }
+                i += 1;
+            }
+        }
+        assert!(keys.len() > 300, "scanner found suspiciously few keys");
+        let mut missing: Vec<String> = Vec::new();
+        for key in &keys {
+            if ALLOW_SAME.contains(&key.as_str()) {
+                continue;
+            }
+            for lang in [super::Language::ZhCn, super::Language::ZhTw] {
+                if lang.tr(key) == key.as_str() {
+                    missing.push(format!("{key} ({lang:?})"));
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "untranslated keys: {}",
+            missing.join(", ")
+        );
+    }
+
+    fn utf8_len(first: u8) -> usize {
+        if first < 0x80 {
+            1
+        } else if first >> 5 == 0b110 {
+            2
+        } else if first >> 4 == 0b1110 {
+            3
+        } else {
+            4
         }
     }
 

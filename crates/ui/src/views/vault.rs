@@ -62,7 +62,10 @@ pub fn dialog(ctx: &egui::Context, state: &mut UiState, _data: &UiData, events: 
                     try_unlock(state, events);
                 }
                 ui.add_space(8.0);
-                if ui.button(state.t("Unlock")).clicked() {
+                if ui.add(egui::Button::new(
+                        egui::RichText::new(state.t("Unlock")).color(egui::Color32::WHITE),
+                    )
+                    .fill(super::filespanel::XGREEN)).clicked() {
                     try_unlock(state, events);
                 }
             } else {

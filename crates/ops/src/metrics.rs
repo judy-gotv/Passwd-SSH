@@ -42,8 +42,7 @@ pub mod commands {
     pub const CPU_STAT: &str = "cat /proc/stat; sleep 1; cat /proc/stat";
     pub const NET_DEV: &str = "cat /proc/net/dev";
     pub const TOP_PROCS: &str = "ps -eo pid,comm,%cpu,%mem --sort=-%cpu | head -n 11";
-    pub const SYSINFO: &str =
-        "grep PRETTY_NAME= /etc/os-release 2>/dev/null | head -1; uname -srm; cat /proc/uptime";
+    pub const SYSINFO: &str = "grep PRETTY_NAME= /etc/os-release 2>/dev/null | head -1; uname -srm; cat /proc/uptime; nproc 2>/dev/null | sed 's/^/NPROC=/'";
 }
 
 /// Static host facts for the monitoring dashboard (fetched once per session).
@@ -54,6 +53,8 @@ pub struct SysInfo {
     /// e.g. "Linux 6.1.0-13-amd64 x86_64".
     pub kernel: String,
     pub uptime_secs: u64,
+    /// Logical CPU cores (`nproc`), when reported.
+    pub cpu_cores: Option<u32>,
 }
 
 /// Parse the SYSINFO output: an optional PRETTY_NAME line, the
@@ -62,9 +63,12 @@ pub fn parse_sysinfo(out: &str) -> Result<SysInfo, OpsError> {
     let mut os_name = String::new();
     let mut kernel = String::new();
     let mut uptime_secs = 0u64;
+    let mut cpu_cores = None;
     for line in out.lines() {
         let line = line.trim();
-        if let Some(v) = line.strip_prefix("PRETTY_NAME=") {
+        if let Some(v) = line.strip_prefix("NPROC=") {
+            cpu_cores = v.trim().parse::<u32>().ok().filter(|n| *n > 0);
+        } else if let Some(v) = line.strip_prefix("PRETTY_NAME=") {
             os_name = v.trim_matches('"').to_string();
         } else if let Some((first, rest)) = line.split_once(char::is_whitespace) {
             // /proc/uptime: two floats. uname: words only.
@@ -89,6 +93,7 @@ pub fn parse_sysinfo(out: &str) -> Result<SysInfo, OpsError> {
         os_name,
         kernel,
         uptime_secs,
+        cpu_cores,
     })
 }
 

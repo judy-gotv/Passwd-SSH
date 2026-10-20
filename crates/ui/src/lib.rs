@@ -63,6 +63,12 @@ pub enum UiEvent {
     ToggleFavorite(String),
     ImportHosts(String),
     ExportHosts,
+    /// Export only the given hosts (manager batch selection).
+    ExportHostsSelected(Vec<String>),
+    /// Duplicate the given hosts (new ids, "- copy" names).
+    DuplicateHosts(Vec<String>),
+    /// Delete the given hosts (batch, with orphan credential cleanup).
+    DeleteHosts(Vec<String>),
     PingHosts,
     CreateGroup(String),
     DeleteGroup(String),

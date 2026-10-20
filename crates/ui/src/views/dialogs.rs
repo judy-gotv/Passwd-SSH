@@ -607,6 +607,12 @@ fn dispatch_confirm_action(state: &mut UiState, events: &mut Vec<UiEvent>, actio
             }
         }
         "noop" => {}
+        "delete_hosts" => {
+            let ids = std::mem::take(&mut state.pending_batch_delete);
+            if !ids.is_empty() {
+                events.push(UiEvent::DeleteHosts(ids));
+            }
+        }
         "delete_credential" => {
             if let Some(id) = parts.next() {
                 events.push(UiEvent::DeleteCredential(id.to_string()));
