@@ -77,6 +77,8 @@ pub struct Host {
     pub passphrase_credential_id: Option<String>,
     pub proxy_jump_id: Option<String>,
     pub startup_command: Option<String>,
+    /// Connection protocol: "ssh" | "telnet" | "vnc" | "rdp".
+    pub protocol: String,
     /// Free-form note shown in the manager tooltip.
     pub note: Option<String>,
     /// TCP/SSH connect timeout (seconds). None = 20s default.
@@ -124,6 +126,7 @@ impl Host {
             passphrase_credential_id: None,
             proxy_jump_id: None,
             startup_command: None,
+            protocol: "ssh".to_string(),
             note: None,
             connect_timeout_secs: None,
             keepalive_secs: None,

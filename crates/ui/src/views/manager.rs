@@ -9,6 +9,7 @@ fn filtered_hosts<'a>(state: &UiState, data: &'a UiData) -> Vec<&'a opsdeck_stor
     let query = state.host_search.to_lowercase();
     data.hosts
         .iter()
+        .filter(|h| h.protocol == state.manager_protocol)
         .filter(|h| match &state.group_filter {
             GroupFilter::All => true,
             GroupFilter::Favorites => h.favorite,
@@ -29,6 +30,32 @@ fn filtered_hosts<'a>(state: &UiState, data: &'a UiData) -> Vec<&'a opsdeck_stor
 /// Draw the manager page.
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
     egui::CentralPanel::default().show(ui, |ui| {
+        // Protocol tabs (Xterminal top bar).
+        ui.horizontal(|ui| {
+            for (id, icon, label) in [
+                ("ssh", "🖥", "SSH"),
+                ("rdp", "🪟", "RDP"),
+                ("telnet", "⌨", "Telnet"),
+                ("tunnel", "⇄", state.t("Tunnels")),
+                ("vnc", "🖱", "VNC"),
+            ] {
+                let selected = state.manager_protocol == id;
+                let text = egui::RichText::new(format!("{icon} {label}"));
+                if ui
+                    .selectable_label(selected, if selected { text.strong() } else { text })
+                    .clicked()
+                {
+                    state.manager_protocol = id.to_string();
+                }
+            }
+        });
+        ui.separator();
+        ui.add_space(4.0);
+
+        if state.manager_protocol == "tunnel" {
+            tunnel_body(ui, state, data, events);
+            return;
+        }
         // Toolbar: filter title + count, refresh latency, new host.
         ui.horizontal(|ui| {
             let title: String = match &state.group_filter {
@@ -47,6 +74,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button(state.t("＋ New")).clicked() {
                     state.host_form = HostForm::blank();
+                    state.host_form.protocol = state.manager_protocol.clone();
+                    state.host_form.port = match state.manager_protocol.as_str() {
+                        "telnet" => "23".to_string(),
+                        "vnc" => "5900".to_string(),
+                        "rdp" => "3389".to_string(),
+                        _ => "22".to_string(),
+                    };
+                    state.host_editor_section = 0;
                     state.show_host_editor = true;
                 }
                 if ui
@@ -205,4 +240,50 @@ fn latency_badge(ui: &mut egui::Ui, state: &UiState, data: &UiData, host_id: &st
             );
         }
     }
+}
+
+/// Active port forwards (the Tunnels tab).
+fn tunnel_body(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(state.t("Tunnels")).strong());
+        ui.label(egui::RichText::new(format!("({})", data.forwards.len())).weak());
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.small_button(state.t("New port forward")).clicked() {
+                state.show_forward_dialog = true;
+            }
+        });
+    });
+    ui.add_space(4.0);
+    ui.label(
+        egui::RichText::new(
+            state.t(
+                "Forwards live as long as their SSH session. Start one from a connected session.",
+            ),
+        )
+        .small()
+        .weak(),
+    );
+    ui.add_space(6.0);
+    if data.forwards.is_empty() {
+        ui.label(egui::RichText::new(state.t("No active forwards")).weak());
+        return;
+    }
+    egui::Grid::new("tunnel_table")
+        .striped(true)
+        .spacing([16.0, 8.0])
+        .show(ui, |ui| {
+            for key in ["Session", "Local", "Remote", "Actions"] {
+                ui.label(egui::RichText::new(state.t(key)).small().weak());
+            }
+            ui.end_row();
+            for f in data.forwards {
+                ui.label(egui::RichText::new(&f.session_name).strong());
+                ui.label(egui::RichText::new(&f.local).monospace().small());
+                ui.label(egui::RichText::new(&f.remote).monospace().small());
+                if ui.small_button(state.t("Stop")).clicked() {
+                    events.push(UiEvent::StopForward(f.id));
+                }
+                ui.end_row();
+            }
+        });
 }

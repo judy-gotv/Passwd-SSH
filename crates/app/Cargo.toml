@@ -30,6 +30,7 @@ opsdeck-ui = { path = "../ui" }
 opsdeck-ssh = { path = "../ssh" }
 opsdeck-terminal = { path = "../terminal" }
 opsdeck-sftp = { path = "../sftp" }
+opsdeck-telnet = { path = "../telnet" }
 opsdeck-storage = { path = "../storage" }
 opsdeck-vault = { path = "../vault" }
 opsdeck-ops = { path = "../ops" }

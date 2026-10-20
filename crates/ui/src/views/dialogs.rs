@@ -114,14 +114,18 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
             // Section navigation (Xterminal-style).
             ui.vertical(|ui| {
                 ui.set_width(120.0);
-                for (idx, label) in [
+                let is_ssh = state.host_form.protocol == "ssh";
+                let mut sections = vec![
                     (0usize, state.t("Basic info")),
                     (1, state.t("Connection")),
-                    (2, state.t("Jump host")),
-                    (3, state.t("Proxy")),
                     (4, state.t("Other")),
-                    (5, state.t("Init")),
-                ] {
+                ];
+                if is_ssh {
+                    sections.insert(2, (2, state.t("Jump host")));
+                    sections.insert(3, (3, state.t("Proxy")));
+                    sections.push((5, state.t("Init")));
+                }
+                for (idx, label) in sections {
                     if ui
                         .selectable_label(state.host_editor_section == idx, label)
                         .clicked()
@@ -195,12 +199,42 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
     }
 }
 
+/// Default port per protocol.
+fn default_port(protocol: &str) -> u16 {
+    match protocol {
+        "telnet" => 23,
+        "vnc" => 5900,
+        "rdp" => 3389,
+        _ => 22,
+    }
+}
+
 /// Basic info: identity, group, auth, credential, note.
 fn section_basic(ui: &mut egui::Ui, state: &mut UiState, data: &UiData) {
     egui::Grid::new("host_basic_grid")
         .num_columns(2)
         .spacing([8.0, 6.0])
         .show(ui, |ui| {
+            ui.label(state.t("Protocol:"));
+            ui.horizontal(|ui| {
+                for (id, label) in [
+                    ("ssh", "SSH"),
+                    ("telnet", "Telnet"),
+                    ("vnc", "VNC"),
+                    ("rdp", "RDP"),
+                ] {
+                    if ui
+                        .selectable_label(state.host_form.protocol == id, label)
+                        .clicked()
+                    {
+                        state.host_form.protocol = id.to_string();
+                        if state.host_form.id.is_none() {
+                            state.host_form.port = default_port(id).to_string();
+                        }
+                    }
+                }
+            });
+            ui.end_row();
             ui.label(state.t("Name:"));
             ui.text_edit_singleline(&mut state.host_form.name);
             ui.end_row();
@@ -350,19 +384,21 @@ fn section_connection(ui: &mut egui::Ui, state: &mut UiState) {
                 );
             });
             ui.end_row();
-            ui.label(state.t("Keepalive (sec):"));
-            ui.horizontal(|ui| {
-                ui.add(
-                    egui::TextEdit::singleline(&mut state.host_form.keepalive_secs)
-                        .desired_width(80.0),
-                );
-                ui.label(
-                    egui::RichText::new(state.t("0 = off, empty = 30"))
-                        .small()
-                        .weak(),
-                );
-            });
-            ui.end_row();
+            if state.host_form.protocol == "ssh" {
+                ui.label(state.t("Keepalive (sec):"));
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut state.host_form.keepalive_secs)
+                            .desired_width(80.0),
+                    );
+                    ui.label(
+                        egui::RichText::new(state.t("0 = off, empty = 30"))
+                            .small()
+                            .weak(),
+                    );
+                });
+                ui.end_row();
+            }
             ui.label(state.t("Terminal type:"));
             ui.text_edit_singleline(&mut state.host_form.term_type);
             ui.end_row();

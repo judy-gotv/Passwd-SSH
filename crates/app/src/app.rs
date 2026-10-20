@@ -259,6 +259,10 @@ pub struct OpsDeckApp {
     ping_in_flight: bool,
     /// Periodic keepalive-command tasks, keyed by host id.
     keepalive_tasks: HashMap<String, tokio::task::AbortHandle>,
+    /// Sessions opened through Telnet (not in the SSH manager).
+    telnet_sessions: std::collections::HashSet<SessionId>,
+    /// SessionInfo entries for non-SSH sessions (merged into session_views).
+    extra_sessions: Vec<SessionInfo>,
     /// Static host facts per host id (OS / kernel / uptime).
     sysinfo: HashMap<String, opsdeck_ops::SysInfo>,
 }
@@ -409,6 +413,8 @@ impl OpsDeckApp {
             latencies: HashMap::new(),
             ping_in_flight: false,
             keepalive_tasks: HashMap::new(),
+            telnet_sessions: std::collections::HashSet::new(),
+            extra_sessions: Vec::new(),
             sysinfo: HashMap::new(),
         };
         app.refresh_cache().await;
@@ -588,8 +594,9 @@ impl OpsDeckApp {
                     .unwrap_or_else(|| "session".to_string());
                 let cmd_tx = shell.commands.clone();
                 self.shells.insert(session, shell);
+                let ssh_only = !self.telnet_sessions.contains(&session);
                 // Init sequence: default path, then the startup command.
-                if let Some(host) = self.cached.hosts.iter().find(|h| h.id == host_id) {
+                if ssh_only && let Some(host) = self.cached.hosts.iter().find(|h| h.id == host_id) {
                     let mut init = String::new();
                     if let Some(path) = host
                         .default_path
@@ -634,24 +641,29 @@ impl OpsDeckApp {
                     }
                 }
                 self.host_sessions.insert(host_id.clone(), session);
-                // Monitoring: start polling + fetch static host facts once.
-                self.ensure_monitor_task(&host_id);
-                {
-                    let collector = self.metrics_collector.clone();
-                    let tx = self.msg_tx.clone();
-                    let hid = host_id.clone();
-                    tokio::spawn(async move {
-                        if let Ok(info) = collector.sysinfo(session).await {
-                            let _ = tx.send(AppMsg::SysInfo { host_id: hid, info });
-                        }
-                    });
+                // SSH-only integrations: monitoring, sysinfo, SFTP, init cmds.
+                if !self.telnet_sessions.contains(&session) {
+                    // Monitoring: start polling + fetch static host facts once.
+                    self.ensure_monitor_task(&host_id);
+                    {
+                        let collector = self.metrics_collector.clone();
+                        let tx = self.msg_tx.clone();
+                        let hid = host_id.clone();
+                        tokio::spawn(async move {
+                            if let Ok(info) = collector.sysinfo(session).await {
+                                let _ = tx.send(AppMsg::SysInfo { host_id: hid, info });
+                            }
+                        });
+                    }
                 }
                 self.session_names.insert(session, name.clone());
-                // Link for SFTP.
-                let sftp = self.sftp.clone();
-                tokio::spawn(async move {
-                    sftp.link_host(&host_id, session).await;
-                });
+                // Link for SFTP (SSH only).
+                if !self.telnet_sessions.contains(&session) {
+                    let sftp = self.sftp.clone();
+                    tokio::spawn(async move {
+                        sftp.link_host(&host_id, session).await;
+                    });
+                }
                 // Place the pane.
                 if let Some((tab_idx, vertical)) = split_into {
                     if let Some(tab) = self.state.tabs.get_mut(tab_idx) {
@@ -670,7 +682,7 @@ impl OpsDeckApp {
                     self.state.active_tab = self.state.tabs.len() - 1;
                     self.state.main_tab = MainTab::Terminal;
                 }
-                // Record host_id on the pane.
+                // Record host_id on the pane. (placed below)
                 for tab in &mut self.state.tabs {
                     for pane in &mut tab.panes {
                         if pane.session == session {
@@ -918,11 +930,68 @@ impl OpsDeckApp {
     // -- actions ---------------------------------------------------------------
 
     /// Connect to a host (resolving proxy jumps), then open a tab / split pane.
+    /// Open a Telnet session: produces a real ShellChannel, so the terminal
+    /// handles it exactly like an SSH shell.
+    fn connect_telnet(&mut self, host: &Host, open_tab: bool, split_into: Option<(usize, bool)>) {
+        let host_id = host.id.clone();
+        if self.connecting.contains_key(&host_id) {
+            return;
+        }
+        let session: SessionId = uuid::Uuid::new_v4();
+        self.telnet_sessions.insert(session);
+        self.extra_sessions.push(SessionInfo {
+            id: session,
+            name: format!("{} (telnet)", host.name),
+            host: host.host.clone(),
+            port: host.port as u16,
+            state: opsdeck_ssh::SessionState::Ready,
+            last_error: None,
+            via: None,
+        });
+        self.connecting
+            .insert(host_id.clone(), "Connecting…".to_string());
+        let timeout = std::time::Duration::from_secs(
+            host.connect_timeout_secs.filter(|v| *v > 0).unwrap_or(20) as u64,
+        );
+        let addr = (host.host.clone(), host.port as u16);
+        let term = host.term_type.clone();
+        let tx = self.msg_tx.clone();
+        tokio::spawn(async move {
+            let res = opsdeck_telnet::open(&addr.0, addr.1, 80, 24, term.as_deref(), timeout).await;
+            match res {
+                Ok(shell) => {
+                    let _ = tx.send(AppMsg::Connected {
+                        host_id,
+                        session,
+                        shell,
+                        open_tab,
+                        split_into,
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(AppMsg::ConnectFailed {
+                        host_id,
+                        error: e.to_string(),
+                    });
+                }
+            }
+        });
+    }
+
     fn connect_host(&mut self, host_id: &str, open_tab: bool, split_into: Option<(usize, bool)>) {
         let Some(host) = self.cached.hosts.iter().find(|h| h.id == host_id).cloned() else {
             self.state.toast(self.state.t("Host not found"), true);
             return;
         };
+        if host.protocol == "telnet" {
+            self.connect_telnet(&host, open_tab, split_into);
+            return;
+        }
+        if host.protocol == "vnc" || host.protocol == "rdp" {
+            self.state
+                .toast(self.state.t("Coming soon in this build"), true);
+            return;
+        }
         if self.connecting.contains_key(host_id) {
             return;
         }
@@ -1838,7 +1907,9 @@ impl OpsDeckApp {
             let opt_env = env_json_from(&form.env_vars);
             let opt_kcmd = opt_str(&form.keepalive_cmd);
             let opt_ksecs = opt_num(&form.keepalive_cmd_secs);
+            let protocol = form.protocol.clone();
             let apply_opts = |host: &mut Host| {
+                host.protocol = protocol.clone();
                 host.note = opt_note.clone();
                 host.connect_timeout_secs = opt_timeout;
                 host.keepalive_secs = opt_keepalive;
@@ -1920,6 +1991,7 @@ impl OpsDeckApp {
         let mut target = Host::new(form.name.clone(), form.host.clone(), form.username.clone());
         target.port = form.port.parse().unwrap_or(22);
         target.auth_type = form.auth_type.clone();
+        target.protocol = form.protocol.clone();
         if !form.proxy_jump_id.is_empty() {
             target.proxy_jump_id = Some(form.proxy_jump_id.clone());
         }
@@ -2175,6 +2247,11 @@ impl eframe::App for OpsDeckApp {
             self.session_views.extend(self.sessions.iter().cloned());
             let live: HashSet<SessionId> = self.sessions.iter().map(|s| s.id).collect();
             for (info, _) in self.recently_closed.values() {
+                if !live.contains(&info.id) {
+                    self.session_views.push(info.clone());
+                }
+            }
+            for info in &self.extra_sessions {
                 if !live.contains(&info.id) {
                     self.session_views.push(info.clone());
                 }

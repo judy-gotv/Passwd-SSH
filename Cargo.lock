@@ -3329,6 +3329,7 @@ dependencies = [
  "opsdeck-ssh",
  "opsdeck-storage",
  "opsdeck-sync",
+ "opsdeck-telnet",
  "opsdeck-terminal",
  "opsdeck-ui",
  "opsdeck-vault",
@@ -3417,6 +3418,16 @@ dependencies = [
  "tracing",
  "uuid",
  "webpki-roots",
+]
+
+[[package]]
+name = "opsdeck-telnet"
+version = "0.1.2"
+dependencies = [
+ "opsdeck-ssh",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

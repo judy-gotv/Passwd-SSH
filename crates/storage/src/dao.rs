@@ -23,6 +23,7 @@ fn map_host(row: &sqlx::sqlite::SqliteRow) -> Result<Host, sqlx::Error> {
         passphrase_credential_id: row.try_get("passphrase_credential_id")?,
         proxy_jump_id: row.try_get("proxy_jump_id")?,
         startup_command: row.try_get("startup_command")?,
+        protocol: row.try_get("protocol")?,
         note: row.try_get("note")?,
         connect_timeout_secs: row.try_get("connect_timeout_secs")?,
         keepalive_secs: row.try_get("keepalive_secs")?,
@@ -135,10 +136,11 @@ impl HostDao<'_> {
         sqlx::query(
             "INSERT INTO hosts (id, name, group_id, host, port, username, auth_type,
              credential_id, passphrase_credential_id, proxy_jump_id, startup_command,
+             protocol,
              note, connect_timeout_secs, keepalive_secs, term_type, default_path,
              proxy_url, env_json, keepalive_cmd, keepalive_cmd_secs,
              tags, favorite, last_connected_at, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&host.id)
         .bind(&host.name)
@@ -151,6 +153,7 @@ impl HostDao<'_> {
         .bind(&host.passphrase_credential_id)
         .bind(&host.proxy_jump_id)
         .bind(&host.startup_command)
+        .bind(&host.protocol)
         .bind(&host.note)
         .bind(host.connect_timeout_secs)
         .bind(host.keepalive_secs)
@@ -176,7 +179,7 @@ impl HostDao<'_> {
         let rows = sqlx::query(
             "UPDATE hosts SET name = ?, group_id = ?, host = ?, port = ?, username = ?,
              auth_type = ?, credential_id = ?, passphrase_credential_id = ?,
-             proxy_jump_id = ?, startup_command = ?, note = ?, connect_timeout_secs = ?,
+             proxy_jump_id = ?, startup_command = ?, protocol = ?, note = ?, connect_timeout_secs = ?,
              keepalive_secs = ?, term_type = ?, default_path = ?, proxy_url = ?,
              env_json = ?, keepalive_cmd = ?, keepalive_cmd_secs = ?, tags = ?, favorite = ?,
              updated_at = ? WHERE id = ?",
@@ -191,6 +194,7 @@ impl HostDao<'_> {
         .bind(&host.passphrase_credential_id)
         .bind(&host.proxy_jump_id)
         .bind(&host.startup_command)
+        .bind(&host.protocol)
         .bind(&host.note)
         .bind(host.connect_timeout_secs)
         .bind(host.keepalive_secs)

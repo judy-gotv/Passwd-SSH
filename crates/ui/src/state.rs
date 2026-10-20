@@ -100,6 +100,8 @@ impl Selection {
 #[derive(Debug, Clone, Default)]
 pub struct HostForm {
     pub id: Option<String>,
+    /// "ssh" | "telnet" | "vnc" | "rdp"
+    pub protocol: String,
     pub name: String,
     pub host: String,
     pub port: String,
@@ -133,6 +135,7 @@ pub struct HostForm {
 impl HostForm {
     pub fn blank() -> Self {
         Self {
+            protocol: "ssh".to_string(),
             port: "22".to_string(),
             username: "root".to_string(),
             auth_type: "password".to_string(),
@@ -180,6 +183,8 @@ pub struct UiState {
     pub unlock_error: Option<String>,
     // main
     pub main_tab: MainTab,
+    /// Manager protocol tab: "ssh" | "rdp" | "telnet" | "tunnel" | "vnc".
+    pub manager_protocol: String,
     pub group_filter: GroupFilter,
     pub new_group_name: String,
     pub host_search: String,
@@ -254,6 +259,7 @@ impl UiState {
             password_confirm: String::new(),
             unlock_error: None,
             main_tab: MainTab::Manager,
+            manager_protocol: "ssh".to_string(),
             group_filter: GroupFilter::All,
             new_group_name: String::new(),
             host_search: String::new(),

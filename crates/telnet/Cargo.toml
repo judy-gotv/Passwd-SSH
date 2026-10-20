@@ -1,0 +1,17 @@
+# OpsDeck Telnet crate — RFC 854 client producing SSH-shaped shell channels.
+# Author: Passwd Word
+
+[package]
+name = "opsdeck-telnet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Telnet client for OpsDeck with IAC negotiation, NAWS and terminal-type support"
+
+[dependencies]
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+opsdeck-ssh = { path = "../ssh" }

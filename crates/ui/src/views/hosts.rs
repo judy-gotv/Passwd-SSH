@@ -197,6 +197,7 @@ pub(crate) fn host_form_from(host: &opsdeck_storage::models::Host, data: &UiData
     let _ = data;
     HostForm {
         id: Some(host.id.clone()),
+        protocol: host.protocol.clone(),
         name: host.name.clone(),
         host: host.host.clone(),
         port: host.port.to_string(),

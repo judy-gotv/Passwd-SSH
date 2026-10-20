@@ -9,6 +9,7 @@ members = [
     "crates/ui",
     "crates/terminal",
     "crates/ssh",
+    "crates/telnet",
     "crates/sftp",
     "crates/ops",
     "crates/vault",

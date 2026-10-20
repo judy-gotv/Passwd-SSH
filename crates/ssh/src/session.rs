@@ -246,6 +246,22 @@ pub struct ShellChannel {
     _task: tokio::task::JoinHandle<()>,
 }
 
+impl ShellChannel {
+    /// Build a channel pair from another crate (e.g. Telnet): the task drives
+    /// the transport until it exits.
+    pub fn wrap(
+        events: mpsc::UnboundedReceiver<ShellEvent>,
+        commands: mpsc::UnboundedSender<ShellCommand>,
+        task: tokio::task::JoinHandle<()>,
+    ) -> Self {
+        Self {
+            events,
+            commands,
+            _task: task,
+        }
+    }
+}
+
 /// Output of a one-shot `exec` command.
 #[derive(Debug, Clone)]
 pub struct ExecOutput {
