@@ -228,10 +228,14 @@ impl Theme {
         w.hovered.corner_radius = rounding;
         w.hovered.expansion = 1.0;
 
-        w.active.bg_fill = accent;
+        // NOTE: `RichText::strong()` reads `widgets.active.fg_stroke` as the
+        // strong-text color, so it must stay the bright theme text color —
+        // a dark "text on accent fill" color would make every heading
+        // unreadable on dark themes.
+        w.active.bg_fill = mix(accent, panel, 0.45);
         w.active.weak_bg_fill = egui::Color32::TRANSPARENT;
-        w.active.bg_stroke = egui::Stroke::NONE;
-        w.active.fg_stroke = egui::Stroke::new(1.5, on_accent);
+        w.active.bg_stroke = egui::Stroke::new(1.0, accent);
+        w.active.fg_stroke = egui::Stroke::new(1.5, text);
         w.active.corner_radius = rounding;
         w.active.expansion = 1.0;
 

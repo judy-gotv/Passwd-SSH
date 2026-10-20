@@ -619,10 +619,16 @@ impl SessionManager {
                                     break;
                                 }
                             }
-                            _ => {
+                            // Terminal conditions: the remote shell is gone.
+                            Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => {
                                 let _ = event_tx.send(ShellEvent::Closed);
                                 break;
                             }
+                            // russh forwards channel request replies (Success/Failure),
+                            // flow-control (WindowAdjusted, XonXoff) and exit
+                            // notifications through wait(): none of them mean the
+                            // shell died. Ignoring them keeps the session alive.
+                            _ => {}
                         }
                     }
                     cmd = cmd_rx.recv() => {
