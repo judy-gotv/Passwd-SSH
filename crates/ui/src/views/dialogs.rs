@@ -26,6 +26,7 @@ pub fn show_all(
     if state.show_snippet_editor {
         snippet_editor(ctx, state, events);
     }
+    super::filespanel::overlays(ctx, state, events);
 }
 
 // ---------------------------------------------------------------------------

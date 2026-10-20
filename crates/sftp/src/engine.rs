@@ -38,6 +38,13 @@ pub trait SftpEngine: Send + Sync {
     async fn mkdir(&self, session: SessionId, path: &str) -> Result<(), SftpError>;
     async fn remove(&self, session: SessionId, path: &str) -> Result<(), SftpError>;
     async fn rename(&self, session: SessionId, from: &str, to: &str) -> Result<(), SftpError>;
+    async fn read_file(&self, session: SessionId, path: &str) -> Result<Vec<u8>, SftpError>;
+    async fn write_file(
+        &self,
+        session: SessionId,
+        path: &str,
+        bytes: &[u8],
+    ) -> Result<(), SftpError>;
     async fn upload(&self, task: TransferTask, progress: ProgressSender) -> Result<(), SftpError>;
     async fn download(&self, task: TransferTask, progress: ProgressSender)
     -> Result<(), SftpError>;
@@ -220,6 +227,42 @@ impl SftpEngine for RusshSftpEngine {
     async fn rename(&self, session: SessionId, from: &str, to: &str) -> Result<(), SftpError> {
         let sftp = self.open_sftp(session).await?;
         sftp.rename(from, to).await?;
+        Ok(())
+    }
+
+    async fn read_file(&self, session: SessionId, path: &str) -> Result<Vec<u8>, SftpError> {
+        /// Editor safety cap: refuse to pull huge files into the text editor.
+        const MAX_EDIT_BYTES: u64 = 8 * 1024 * 1024;
+        let sftp = self.open_sftp(session).await?;
+        if let Ok(meta) = sftp.metadata(path).await
+            && meta.len() > MAX_EDIT_BYTES
+        {
+            return Err(SftpError::Io(format!(
+                "file is too large to edit ({} bytes, limit {MAX_EDIT_BYTES})",
+                meta.len()
+            )));
+        }
+        let mut remote = sftp.open_with_flags(path, OpenFlags::READ).await?;
+        let mut buf = Vec::new();
+        remote.read_to_end(&mut buf).await?;
+        if buf.len() as u64 > MAX_EDIT_BYTES {
+            return Err(SftpError::Io(
+                "file is too large to edit (limit 8 MiB)".to_string(),
+            ));
+        }
+        Ok(buf)
+    }
+
+    async fn write_file(
+        &self,
+        session: SessionId,
+        path: &str,
+        bytes: &[u8],
+    ) -> Result<(), SftpError> {
+        let sftp = self.open_sftp(session).await?;
+        let mut remote = sftp.create(path).await?;
+        remote.write_all(bytes).await?;
+        remote.flush().await?;
         Ok(())
     }
 

@@ -114,8 +114,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
         }
         ui.separator();
 
-        // Listing
-        let listing = data.sftp_listings.get(&host_id);
+        // Listing (per-path cache; this view shows the current path)
+        let listing = data
+            .sftp_listings
+            .get(&(host_id.clone(), state.sftp_path(&host_id)));
         if listing.map(|l| l.loading).unwrap_or(false) {
             ui.horizontal(|ui| {
                 ui.spinner();

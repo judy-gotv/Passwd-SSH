@@ -25,8 +25,8 @@ pub mod views;
 pub use i18n::Language;
 
 pub use state::{
-    ConfirmDialog, DesktopTab, GroupFilter, HostForm, MainTab, Pane, Screen, Selection,
-    SnippetForm, TermTab, Toast, UiState,
+    ConfirmDialog, DesktopTab, FileEditor, GroupFilter, HostForm, MainTab, Pane, Screen, Selection,
+    SnippetForm, TermTab, TextPrompt, Toast, UiState,
 };
 pub use theme::Theme;
 
@@ -121,6 +121,22 @@ pub enum UiEvent {
         host_id: String,
         remote: String,
         local: String,
+    },
+    /// Download a remote file into the OS Downloads folder.
+    SftpDownloadToDownloads {
+        host_id: String,
+        remote: String,
+    },
+    /// Load a remote file's text into the built-in editor.
+    SftpEditFile {
+        host_id: String,
+        path: String,
+    },
+    /// Write editor content back to the remote file.
+    SftpSaveFile {
+        host_id: String,
+        path: String,
+        content: String,
     },
     TransferPause(String),
     TransferRetry(String),
@@ -219,7 +235,9 @@ pub struct UiData<'a> {
     pub snippets: &'a [Snippet],
     pub transfers: &'a [TransferTask],
     pub credentials: &'a [CredentialMeta],
-    pub sftp_listings: &'a HashMap<String, SftpListing>,
+    /// Directory listings keyed by (host_id, path) so tree views can
+    /// hold many directories at once.
+    pub sftp_listings: &'a HashMap<(String, String), SftpListing>,
     pub metrics: &'a HashMap<String, Vec<MetricSnapshot>>,
     pub processes: &'a HashMap<String, Vec<ProcessInfo>>,
     pub key_prompts: &'a [KeyPromptView],

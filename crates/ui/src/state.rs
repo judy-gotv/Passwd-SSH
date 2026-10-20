@@ -168,6 +168,46 @@ pub struct Toast {
     pub error: bool,
 }
 
+/// Built-in text editor for one remote file (session file workspace).
+#[derive(Debug, Clone)]
+pub struct FileEditor {
+    pub host_id: String,
+    pub path: String,
+    /// Content as loaded / last saved (dirty check baseline).
+    pub original: String,
+    pub content: String,
+    pub loading: bool,
+    pub saving: bool,
+    pub error: Option<String>,
+}
+
+impl FileEditor {
+    pub fn loading(host_id: &str, path: &str) -> Self {
+        Self {
+            host_id: host_id.to_string(),
+            path: path.to_string(),
+            original: String::new(),
+            content: String::new(),
+            loading: true,
+            saving: false,
+            error: None,
+        }
+    }
+    pub fn dirty(&self) -> bool {
+        self.content != self.original
+    }
+}
+
+/// One-line text prompt (rename / new folder / new file in the file
+/// workspace). `action` encodes the operation for the dispatch in the
+/// files panel overlay.
+#[derive(Debug, Clone)]
+pub struct TextPrompt {
+    pub title: String,
+    pub value: String,
+    pub action: String,
+}
+
 /// A generic confirmation dialog.
 #[derive(Debug, Clone)]
 pub struct ConfirmDialog {
@@ -237,6 +277,16 @@ pub struct UiState {
     pub show_monitor_panel: bool,
     /// Last auto-load request time for the files panel, per host id.
     pub files_panel_requested: HashMap<String, Instant>,
+    /// Session file workspace: expanded tree directories per host.
+    pub files_expanded: std::collections::HashMap<String, std::collections::HashSet<String>>,
+    /// Session file workspace: selected entry (path, is_dir) per host.
+    pub files_selected: std::collections::HashMap<String, (String, bool)>,
+    /// Session file workspace: whether the upload-path row is open.
+    pub files_upload_open: bool,
+    /// Remote file open in the built-in editor, if any.
+    pub file_editor: Option<FileEditor>,
+    /// Pending one-line text prompt (rename / new folder / new file).
+    pub text_prompt: Option<TextPrompt>,
     pub sftp_mkdir_open: bool,
     pub sftp_new_dir_name: String,
     pub sftp_rename_from: Option<String>,
@@ -314,6 +364,11 @@ impl UiState {
             show_files_panel: true,
             show_monitor_panel: true,
             files_panel_requested: HashMap::new(),
+            files_expanded: HashMap::new(),
+            files_selected: HashMap::new(),
+            files_upload_open: false,
+            file_editor: None,
+            text_prompt: None,
             sftp_mkdir_open: false,
             sftp_new_dir_name: String::new(),
             sftp_rename_from: None,

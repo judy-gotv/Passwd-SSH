@@ -82,6 +82,11 @@ enum AppMsg {
         result: Result<(), String>,
         what: String,
     },
+    SftpFileContent {
+        host_id: String,
+        path: String,
+        result: Result<String, String>,
+    },
     BatchDone {
         results: Vec<(String, String)>,
     },
@@ -241,7 +246,7 @@ pub struct OpsDeckApp {
     sftp: Arc<RusshSftpEngine>,
     transfers: Arc<TransferQueue>,
     transfer_rx: mpsc::UnboundedReceiver<QueueEvent>,
-    sftp_listings: HashMap<String, SftpListing>,
+    sftp_listings: HashMap<(String, String), SftpListing>,
 
     metric_tx: mpsc::UnboundedSender<AppMsg>,
     monitor_tasks: HashMap<String, tokio::task::AbortHandle>,
@@ -841,17 +846,40 @@ impl OpsDeckApp {
                 path,
                 result,
             } => {
-                let listing = self.sftp_listings.entry(host_id.clone()).or_default();
+                let listing = self
+                    .sftp_listings
+                    .entry((host_id.clone(), path.clone()))
+                    .or_default();
                 listing.loading = false;
                 match result {
                     Ok(entries) => {
                         listing.path = path.clone();
                         listing.entries = entries;
                         listing.error = None;
-                        self.state.sftp_paths.insert(host_id, path);
                     }
                     Err(e) => {
                         listing.error = Some(e);
+                    }
+                }
+            }
+            AppMsg::SftpFileContent {
+                host_id,
+                path,
+                result,
+            } => {
+                if let Some(editor) = self.state.file_editor.as_mut()
+                    && editor.host_id == host_id
+                    && editor.path == path
+                {
+                    editor.loading = false;
+                    match result {
+                        Ok(text) => {
+                            editor.original = text.clone();
+                            editor.content = text;
+                        }
+                        Err(e) => {
+                            editor.error = Some(e);
+                        }
                     }
                 }
             }
@@ -864,14 +892,49 @@ impl OpsDeckApp {
                     "mkdir" => "Create directory",
                     "delete" => "Delete",
                     "rename" => "Rename",
+                    "save" => "Save",
                     _ => "File operation",
                 });
+                if what == "save" {
+                    match &result {
+                        Ok(()) => {
+                            // Saved: close the editor for this host.
+                            if self
+                                .state
+                                .file_editor
+                                .as_ref()
+                                .is_some_and(|e| e.host_id == host_id)
+                            {
+                                self.state.file_editor = None;
+                            }
+                        }
+                        Err(_) => {
+                            if let Some(e) = self.state.file_editor.as_mut() {
+                                e.saving = false;
+                            }
+                        }
+                    }
+                }
                 match result {
                     Ok(()) => {
                         self.state
                             .toast(self.state.tf("SFTP {op} done", &[("op", op)]), false);
-                        let path = self.state.sftp_path(&host_id);
-                        self.navigate_sftp(&host_id, &path);
+                        // Refresh every cached directory of this host so
+                        // tree views and the Files tab stay current.
+                        let paths: Vec<String> = self
+                            .sftp_listings
+                            .keys()
+                            .filter(|(h, _)| h == &host_id)
+                            .map(|(_, p)| p.clone())
+                            .collect();
+                        if paths.is_empty() {
+                            let path = self.state.sftp_path(&host_id);
+                            self.navigate_sftp(&host_id, &path);
+                        } else {
+                            for path in paths {
+                                self.navigate_sftp(&host_id, &path);
+                            }
+                        }
                     }
                     Err(e) => self.state.toast(
                         self.state.tf(
@@ -1291,7 +1354,10 @@ impl OpsDeckApp {
                 .toast(self.state.t("Connect the host first (Terminal tab)"), true);
             return;
         };
-        let listing = self.sftp_listings.entry(host_id.to_string()).or_default();
+        let listing = self
+            .sftp_listings
+            .entry((host_id.to_string(), path.to_string()))
+            .or_default();
         listing.loading = true;
         listing.error = None;
         let sftp = self.sftp.clone();
@@ -1772,6 +1838,105 @@ impl OpsDeckApp {
                 });
                 self.cache_dirty = true;
                 self.state.toast(self.state.t("Download queued"), false);
+            }
+            UiEvent::SftpDownloadToDownloads { host_id, remote } => {
+                let dirs = directories::UserDirs::new();
+                let base = dirs
+                    .as_ref()
+                    .and_then(|d| d.download_dir().map(|p| p.to_path_buf()))
+                    .or_else(|| dirs.as_ref().map(|d| d.home_dir().join("Downloads")));
+                match base {
+                    Some(dir) => {
+                        let _ = std::fs::create_dir_all(&dir);
+                        let name = remote
+                            .rsplit('/')
+                            .next()
+                            .unwrap_or("download.bin")
+                            .to_string();
+                        let local = dir.join(&name).to_string_lossy().to_string();
+                        let task = TransferQueue::new_task(
+                            &host_id,
+                            TransferDirection::Download,
+                            &local,
+                            &remote,
+                        );
+                        let transfers = self.transfers.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = transfers.enqueue(task).await {
+                                tracing::warn!("enqueue download failed: {e}");
+                            }
+                        });
+                        self.cache_dirty = true;
+                        self.state.toast(
+                            self.state.tf("Downloading to {path}", &[("path", &local)]),
+                            false,
+                        );
+                    }
+                    None => {
+                        self.state
+                            .toast(self.state.t("Could not find the Downloads folder"), true);
+                    }
+                }
+            }
+            UiEvent::SftpEditFile { host_id, path } => {
+                if let Some(session) = self.host_sessions.get(&host_id).cloned() {
+                    let sftp = self.sftp.clone();
+                    let tx = self.msg_tx.clone();
+                    tokio::spawn(async move {
+                        let result = sftp
+                            .read_file(session, &path)
+                            .await
+                            .map_err(|e| e.to_string())
+                            .and_then(|bytes| {
+                                String::from_utf8(bytes)
+                                    .map_err(|_| "the file is not valid UTF-8 text".to_string())
+                            });
+                        let _ = tx.send(AppMsg::SftpFileContent {
+                            host_id,
+                            path,
+                            result,
+                        });
+                    });
+                } else {
+                    let msg = self
+                        .state
+                        .t("Connect the host first (Terminal tab)")
+                        .to_string();
+                    if let Some(e) = self.state.file_editor.as_mut() {
+                        e.loading = false;
+                        e.error = Some(msg);
+                    }
+                }
+            }
+            UiEvent::SftpSaveFile {
+                host_id,
+                path,
+                content,
+            } => {
+                if let Some(session) = self.host_sessions.get(&host_id).cloned() {
+                    let sftp = self.sftp.clone();
+                    let tx = self.msg_tx.clone();
+                    tokio::spawn(async move {
+                        let result = sftp
+                            .write_file(session, &path, content.as_bytes())
+                            .await
+                            .map_err(|e| e.to_string());
+                        let _ = tx.send(AppMsg::SftpOpDone {
+                            host_id,
+                            result,
+                            what: "save".to_string(),
+                        });
+                    });
+                } else {
+                    let msg = self
+                        .state
+                        .t("Connect the host first (Terminal tab)")
+                        .to_string();
+                    if let Some(e) = self.state.file_editor.as_mut() {
+                        e.saving = false;
+                        e.error = Some(msg);
+                    }
+                }
             }
             UiEvent::TransferPause(id) => {
                 let transfers = self.transfers.clone();
