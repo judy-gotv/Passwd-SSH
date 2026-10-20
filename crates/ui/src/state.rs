@@ -203,6 +203,11 @@ pub struct UiState {
     // sftp
     pub sftp_host: Option<String>,
     pub sftp_paths: HashMap<String, String>,
+    // terminal session view
+    pub show_files_panel: bool,
+    pub show_monitor_panel: bool,
+    /// Last auto-load request time for the files panel, per host id.
+    pub files_panel_requested: HashMap<String, Instant>,
     pub sftp_mkdir_open: bool,
     pub sftp_new_dir_name: String,
     pub sftp_rename_from: Option<String>,
@@ -269,6 +274,9 @@ impl UiState {
             search_hit_cursor: HashMap::new(),
             sftp_host: None,
             sftp_paths: HashMap::new(),
+            show_files_panel: true,
+            show_monitor_panel: true,
+            files_panel_requested: HashMap::new(),
             sftp_mkdir_open: false,
             sftp_new_dir_name: String::new(),
             sftp_rename_from: None,

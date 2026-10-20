@@ -13,5 +13,5 @@ pub mod snippets;
 
 pub use batch::{BatchResult, run_on_hosts};
 pub use error::OpsError;
-pub use metrics::{MetricsCollector, ProcessInfo, Snapshot, commands};
+pub use metrics::{MetricsCollector, ProcessInfo, Snapshot, SysInfo, commands};
 pub use snippets::{SnippetService, dangerous_reason};

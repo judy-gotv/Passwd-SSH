@@ -39,6 +39,20 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
+                    .selectable_label(state.show_monitor_panel, "📊")
+                    .on_hover_text(state.t("Monitor panel"))
+                    .clicked()
+                {
+                    state.show_monitor_panel = !state.show_monitor_panel;
+                }
+                if ui
+                    .selectable_label(state.show_files_panel, "📁")
+                    .on_hover_text(state.t("Files panel"))
+                    .clicked()
+                {
+                    state.show_files_panel = !state.show_files_panel;
+                }
+                if ui
                     .small_button("🔍")
                     .on_hover_text(state.t("Search terminal (Ctrl+F)"))
                     .clicked()
@@ -69,6 +83,20 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
             });
         });
     });
+
+    // Session side panels (Xterminal-style): files left, monitor right.
+    let active_host = state
+        .active_pane()
+        .map(|p| p.host_id.clone())
+        .filter(|h| !h.is_empty());
+    if let Some(host_id) = active_host {
+        if state.show_files_panel {
+            super::filespanel::show(ui, state, data, events, &host_id);
+        }
+        if state.show_monitor_panel {
+            super::dashboard::show(ui, state, data, &host_id);
+        }
+    }
 
     // Panes
     egui::CentralPanel::default().show(ui, |ui| {

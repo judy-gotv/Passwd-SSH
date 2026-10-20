@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use opsdeck_ops::ProcessInfo;
+use opsdeck_ops::{ProcessInfo, SysInfo};
 use opsdeck_sftp::FileEntry;
 use opsdeck_ssh::{HostKeyDecision, SessionId, SessionInfo};
 use opsdeck_storage::models::{
@@ -203,6 +203,8 @@ pub struct UiData<'a> {
     /// TCP connect latency per host id: Some(ms) or None (timeout/refused).
     /// Missing key = not measured yet.
     pub latencies: &'a HashMap<String, Option<u32>>,
+    /// Static host facts (OS / kernel / uptime), fetched once per session.
+    pub sysinfo: &'a HashMap<String, SysInfo>,
 }
 
 impl<'a> UiData<'a> {

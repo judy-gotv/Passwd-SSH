@@ -42,6 +42,54 @@ pub mod commands {
     pub const CPU_STAT: &str = "cat /proc/stat; sleep 1; cat /proc/stat";
     pub const NET_DEV: &str = "cat /proc/net/dev";
     pub const TOP_PROCS: &str = "ps -eo pid,comm,%cpu,%mem --sort=-%cpu | head -n 11";
+    pub const SYSINFO: &str =
+        "grep PRETTY_NAME= /etc/os-release 2>/dev/null | head -1; uname -srm; cat /proc/uptime";
+}
+
+/// Static host facts for the monitoring dashboard (fetched once per session).
+#[derive(Debug, Clone, Default)]
+pub struct SysInfo {
+    /// e.g. "Debian GNU/Linux 12 (bookworm)".
+    pub os_name: String,
+    /// e.g. "Linux 6.1.0-13-amd64 x86_64".
+    pub kernel: String,
+    pub uptime_secs: u64,
+}
+
+/// Parse the SYSINFO output: an optional PRETTY_NAME line, the
+/// `uname -srm` line and the /proc/uptime line (order may vary).
+pub fn parse_sysinfo(out: &str) -> Result<SysInfo, OpsError> {
+    let mut os_name = String::new();
+    let mut kernel = String::new();
+    let mut uptime_secs = 0u64;
+    for line in out.lines() {
+        let line = line.trim();
+        if let Some(v) = line.strip_prefix("PRETTY_NAME=") {
+            os_name = v.trim_matches('"').to_string();
+        } else if let Some((first, rest)) = line.split_once(char::is_whitespace) {
+            // /proc/uptime: two floats. uname: words only.
+            let is_uptime = first.parse::<f64>().is_ok()
+                && rest
+                    .split_whitespace()
+                    .next()
+                    .is_some_and(|v| v.parse::<f64>().is_ok());
+            if is_uptime {
+                uptime_secs = first.parse::<f64>().map(|v| v as u64).unwrap_or(0);
+            } else if kernel.is_empty() {
+                kernel = line.to_string();
+            }
+        } else if kernel.is_empty() && !line.is_empty() {
+            kernel = line.to_string();
+        }
+    }
+    if os_name.is_empty() {
+        os_name = "Linux".to_string();
+    }
+    Ok(SysInfo {
+        os_name,
+        kernel,
+        uptime_secs,
+    })
 }
 
 /// Parse `cat /proc/loadavg` → (1m, 5m, 15m).
@@ -239,6 +287,15 @@ impl MetricsCollector {
         })
     }
 
+    /// Fetch static host facts (OS / kernel / uptime) once per session.
+    pub async fn sysinfo(&self, session: SessionId) -> Result<SysInfo, OpsError> {
+        let out = self
+            .ssh
+            .exec_timeout(session, commands::SYSINFO, Duration::from_secs(15))
+            .await?;
+        parse_sysinfo(&out.stdout)
+    }
+
     /// Fetch the top-process table.
     pub async fn top_processes(&self, session: SessionId) -> Result<Vec<ProcessInfo>, OpsError> {
         let out = self
@@ -252,6 +309,19 @@ impl MetricsCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sysinfo_parses() {
+        let out = "PRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\nLinux 6.1.0-13-amd64 x86_64\n3370000.25 6600000.50\n";
+        let info = parse_sysinfo(out).unwrap();
+        assert_eq!(info.os_name, "Debian GNU/Linux 12 (bookworm)");
+        assert_eq!(info.kernel, "Linux 6.1.0-13-amd64 x86_64");
+        assert_eq!(info.uptime_secs, 3_370_000);
+
+        let bare = parse_sysinfo("Linux 5.15.0 armv7l\n123.4 900.1\n").unwrap();
+        assert_eq!(bare.os_name, "Linux");
+        assert_eq!(bare.uptime_secs, 123);
+    }
 
     #[test]
     fn loadavg_parses() {

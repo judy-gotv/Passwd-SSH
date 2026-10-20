@@ -59,6 +59,10 @@ enum AppMsg {
     SessionList(Vec<SessionInfo>),
     Latencies(HashMap<String, Option<u32>>),
     TestResult(Result<u32, String>),
+    SysInfo {
+        host_id: String,
+        info: opsdeck_ops::SysInfo,
+    },
     SftpListed {
         host_id: String,
         path: String,
@@ -255,6 +259,8 @@ pub struct OpsDeckApp {
     ping_in_flight: bool,
     /// Periodic keepalive-command tasks, keyed by host id.
     keepalive_tasks: HashMap<String, tokio::task::AbortHandle>,
+    /// Static host facts per host id (OS / kernel / uptime).
+    sysinfo: HashMap<String, opsdeck_ops::SysInfo>,
 }
 
 impl OpsDeckApp {
@@ -403,6 +409,7 @@ impl OpsDeckApp {
             latencies: HashMap::new(),
             ping_in_flight: false,
             keepalive_tasks: HashMap::new(),
+            sysinfo: HashMap::new(),
         };
         app.refresh_cache().await;
         let _ = device_id(&app.storage).await; // ensure a stable device id exists
@@ -627,6 +634,18 @@ impl OpsDeckApp {
                     }
                 }
                 self.host_sessions.insert(host_id.clone(), session);
+                // Monitoring: start polling + fetch static host facts once.
+                self.ensure_monitor_task(&host_id);
+                {
+                    let collector = self.metrics_collector.clone();
+                    let tx = self.msg_tx.clone();
+                    let hid = host_id.clone();
+                    tokio::spawn(async move {
+                        if let Ok(info) = collector.sysinfo(session).await {
+                            let _ = tx.send(AppMsg::SysInfo { host_id: hid, info });
+                        }
+                    });
+                }
                 self.session_names.insert(session, name.clone());
                 // Link for SFTP.
                 let sftp = self.sftp.clone();
@@ -716,6 +735,9 @@ impl OpsDeckApp {
                 self.latencies = map;
                 self.ping_in_flight = false;
                 self.cache_dirty = true;
+            }
+            AppMsg::SysInfo { host_id, info } => {
+                self.sysinfo.insert(host_id, info);
             }
             AppMsg::TestResult(result) => match result {
                 Ok(ms) => {
@@ -1014,10 +1036,14 @@ impl OpsDeckApp {
         if let Some(shell) = self.shells.remove(&session) {
             let _ = shell.commands.send(ShellCommand::Close);
         }
-        if let Some((hid, _)) = self.host_sessions.iter().find(|(_, s)| **s == session)
-            && let Some(handle) = self.keepalive_tasks.remove(hid)
-        {
-            handle.abort();
+        if let Some((hid, _)) = self.host_sessions.iter().find(|(_, s)| **s == session) {
+            let hid = hid.clone();
+            if let Some(handle) = self.keepalive_tasks.remove(&hid) {
+                handle.abort();
+            }
+            if let Some(handle) = self.monitor_tasks.remove(&hid) {
+                handle.abort();
+            }
         }
         let ssh = self.ssh.clone();
         let sftp = self.sftp.clone();
@@ -2200,6 +2226,7 @@ impl eframe::App for OpsDeckApp {
             sync: &self.sync_view,
             theme: &self.theme,
             latencies: &self.latencies,
+            sysinfo: &self.sysinfo,
         };
 
         let mut events = Vec::new();

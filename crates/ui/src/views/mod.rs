@@ -1,7 +1,9 @@
 //! UI views.
 //! Author: Passwd Word
 
+pub mod dashboard;
 pub mod dialogs;
+pub mod filespanel;
 pub mod hosts;
 pub mod main;
 pub mod manager;
