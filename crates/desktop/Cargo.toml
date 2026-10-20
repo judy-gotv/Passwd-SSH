@@ -1,0 +1,15 @@
+# OpsDeck desktop crate — shared frame buffer and command channel for VNC/RDP sessions.
+# Author: Passwd Word
+
+[package]
+name = "opsdeck-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Shared frame buffer, input commands and session handles for OpsDeck remote-desktop sessions"
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true

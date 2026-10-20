@@ -175,6 +175,15 @@ pub struct ConfirmDialog {
 }
 
 /// All UI view state.
+/// A remote-desktop tab (VNC/RDP): one running desktop session.
+#[derive(Debug, Clone)]
+pub struct DesktopTab {
+    pub id: u64,
+    pub host_id: String,
+    pub title: String,
+    pub kind: String,
+}
+
 pub struct UiState {
     pub screen: Screen,
     // vault screen
@@ -198,6 +207,14 @@ pub struct UiState {
     // terminal tabs
     pub tabs: Vec<TermTab>,
     pub active_tab: usize,
+    /// Open remote-desktop tabs.
+    pub desktops: Vec<DesktopTab>,
+    /// The focused desktop tab, if any (shares the workspace with terminals).
+    pub active_desktop: Option<u64>,
+    /// Uploaded egui textures per desktop id.
+    pub desktop_textures: HashMap<u64, egui::TextureHandle>,
+    /// Last frame version uploaded per desktop id.
+    pub desktop_frame_versions: HashMap<u64, u64>,
     pub terminals: HashMap<SessionId, Terminal>,
     /// Last size we told the backend about (cols, rows).
     pub term_sizes: HashMap<SessionId, (usize, usize)>,
@@ -272,6 +289,10 @@ impl UiState {
             confirm: None,
             tabs: Vec::new(),
             active_tab: 0,
+            desktops: Vec::new(),
+            active_desktop: None,
+            desktop_textures: HashMap::new(),
+            desktop_frame_versions: HashMap::new(),
             terminals: HashMap::new(),
             term_sizes: HashMap::new(),
             selections: HashMap::new(),

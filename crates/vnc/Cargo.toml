@@ -1,0 +1,20 @@
+# OpsDeck VNC crate — RFB client (whitequark rust-vnc) driving a shared frame buffer.
+# Author: Passwd Word
+
+[package]
+name = "opsdeck-vnc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "VNC (RFB) client for OpsDeck rendering into a shared RGBA frame buffer"
+
+[dependencies]
+vnc = "0.4"
+thiserror.workspace = true
+tracing.workspace = true
+opsdeck-desktop = { path = "../desktop" }
+
+[dev-dependencies]
+tokio.workspace = true

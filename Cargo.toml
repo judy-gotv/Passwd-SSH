@@ -10,6 +10,8 @@ members = [
     "crates/terminal",
     "crates/ssh",
     "crates/telnet",
+    "crates/desktop",
+    "crates/vnc",
     "crates/sftp",
     "crates/ops",
     "crates/vault",

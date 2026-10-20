@@ -2,6 +2,7 @@
 //! Author: Passwd Word
 
 pub mod dashboard;
+pub mod desktop;
 pub mod dialogs;
 pub mod filespanel;
 pub mod hosts;

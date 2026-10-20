@@ -50,6 +50,13 @@ enum AppMsg {
         host_id: String,
         error: String,
     },
+    DesktopConnected {
+        id: u64,
+        host_id: String,
+        name: String,
+        kind: String,
+        handle: opsdeck_desktop::DesktopHandle,
+    },
     Reconnected {
         old: SessionId,
         new: SessionId,
@@ -263,6 +270,10 @@ pub struct OpsDeckApp {
     telnet_sessions: std::collections::HashSet<SessionId>,
     /// SessionInfo entries for non-SSH sessions (merged into session_views).
     extra_sessions: Vec<SessionInfo>,
+    /// Running remote-desktop sessions + their UiData views.
+    desktops: HashMap<u64, opsdeck_desktop::DesktopHandle>,
+    desktop_views: Vec<opsdeck_ui::DesktopView>,
+    next_desktop_id: u64,
     /// Static host facts per host id (OS / kernel / uptime).
     sysinfo: HashMap<String, opsdeck_ops::SysInfo>,
 }
@@ -415,6 +426,9 @@ impl OpsDeckApp {
             keepalive_tasks: HashMap::new(),
             telnet_sessions: std::collections::HashSet::new(),
             extra_sessions: Vec::new(),
+            desktops: HashMap::new(),
+            desktop_views: Vec::new(),
+            next_desktop_id: 1,
             sysinfo: HashMap::new(),
         };
         app.refresh_cache().await;
@@ -700,6 +714,31 @@ impl OpsDeckApp {
                     false,
                 );
             }
+            AppMsg::DesktopConnected {
+                id,
+                host_id,
+                name,
+                kind,
+                handle,
+            } => {
+                self.connecting.remove(&host_id);
+                self.desktop_views.push(opsdeck_ui::DesktopView {
+                    id,
+                    host_id: host_id.clone(),
+                    name: name.clone(),
+                    kind: kind.clone(),
+                    frame: handle.frame.clone(),
+                });
+                self.desktops.insert(id, handle);
+                self.state.desktops.push(opsdeck_ui::DesktopTab {
+                    id,
+                    host_id,
+                    title: name,
+                    kind,
+                });
+                self.state.active_desktop = Some(id);
+                self.state.main_tab = MainTab::Terminal;
+            }
             AppMsg::ConnectFailed { host_id, error } => {
                 self.connecting.remove(&host_id);
                 self.state.toast(
@@ -930,6 +969,71 @@ impl OpsDeckApp {
     // -- actions ---------------------------------------------------------------
 
     /// Connect to a host (resolving proxy jumps), then open a tab / split pane.
+    /// Open a remote-desktop session (VNC today, RDP lands next).
+    fn connect_desktop(&mut self, host: &Host) {
+        if self.connecting.contains_key(&host.id) {
+            return;
+        }
+        let id = self.next_desktop_id;
+        self.next_desktop_id += 1;
+        self.connecting
+            .insert(host.id.clone(), "Connecting…".to_string());
+        let creds = self.creds.clone();
+        let cred_id = host.credential_id.clone();
+        let host2 = host.clone();
+        let tx = self.msg_tx.clone();
+        tokio::spawn(async move {
+            let password = match &cred_id {
+                Some(cid) => match creds.secret_for(cid).await {
+                    Ok(bytes) => Some(String::from_utf8_lossy(&bytes).into_owned()),
+                    Err(_) => None,
+                },
+                None => None,
+            };
+            let kind = host2.protocol.clone();
+            let kind_for_worker = kind.clone();
+            let name = host2.name.clone();
+            let host_id = host2.id.clone();
+            let timeout = std::time::Duration::from_secs(
+                host2.connect_timeout_secs.filter(|v| *v > 0).unwrap_or(15) as u64,
+            );
+            let res = tokio::task::spawn_blocking(move || {
+                if kind_for_worker == "vnc" {
+                    opsdeck_vnc::connect(
+                        &host2.host,
+                        host2.port as u16,
+                        password.as_deref(),
+                        timeout,
+                    )
+                    .map_err(|e| e.to_string())
+                } else {
+                    Err("RDP is not available in this build".to_string())
+                }
+            })
+            .await;
+            match res {
+                Ok(Ok(handle)) => {
+                    let _ = tx.send(AppMsg::DesktopConnected {
+                        id,
+                        host_id,
+                        name,
+                        kind,
+                        handle,
+                    });
+                }
+                Ok(Err(e)) => {
+                    let _ = tx.send(AppMsg::ConnectFailed { host_id, error: e });
+                }
+                Err(e) => {
+                    let _ = tx.send(AppMsg::ConnectFailed {
+                        host_id,
+                        error: e.to_string(),
+                    });
+                }
+            }
+        });
+    }
+
     /// Open a Telnet session: produces a real ShellChannel, so the terminal
     /// handles it exactly like an SSH shell.
     fn connect_telnet(&mut self, host: &Host, open_tab: bool, split_into: Option<(usize, bool)>) {
@@ -988,8 +1092,7 @@ impl OpsDeckApp {
             return;
         }
         if host.protocol == "vnc" || host.protocol == "rdp" {
-            self.state
-                .toast(self.state.t("Coming soon in this build"), true);
+            self.connect_desktop(&host);
             return;
         }
         if self.connecting.contains_key(host_id) {
@@ -1453,6 +1556,25 @@ impl OpsDeckApp {
             }
 
             // -- terminal ---------------------------------------------------
+            UiEvent::CloseDesktop { id } => {
+                if let Some(h) = self.desktops.remove(&id) {
+                    h.send(opsdeck_desktop::DesktopCommand::Close);
+                }
+                self.desktop_views.retain(|v| v.id != id);
+            }
+            UiEvent::DesktopPointer { id, buttons, x, y } => {
+                if let Some(h) = self.desktops.get(&id) {
+                    h.send(opsdeck_desktop::DesktopCommand::Pointer { buttons, x, y });
+                }
+            }
+            UiEvent::DesktopKey { id, keysym, down } => {
+                if let Some(h) = self.desktops.get(&id) {
+                    h.send(opsdeck_desktop::DesktopCommand::Key {
+                        keycode: keysym,
+                        down,
+                    });
+                }
+            }
             UiEvent::TerminalInput(session, bytes) => {
                 if let Some(shell) = self.shells.get(&session) {
                     let _ = shell.commands.send(ShellCommand::Write(bytes));
@@ -2304,6 +2426,7 @@ impl eframe::App for OpsDeckApp {
             theme: &self.theme,
             latencies: &self.latencies,
             sysinfo: &self.sysinfo,
+            desktops: &self.desktop_views,
         };
 
         let mut events = Vec::new();

@@ -17,6 +17,7 @@ serde_json.workspace = true
 uuid.workspace = true
 opsdeck-terminal = { path = "../terminal" }
 opsdeck-ssh = { path = "../ssh" }
+opsdeck-desktop = { path = "../desktop" }
 opsdeck-storage = { path = "../storage" }
 opsdeck-ops = { path = "../ops" }
 opsdeck-sftp = { path = "../sftp" }

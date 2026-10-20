@@ -17,9 +17,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
             // Tabs
             for (i, tab) in state.tabs.iter().enumerate() {
                 let title = tab_title(tab);
-                let active = i == state.active_tab;
+                let active = i == state.active_tab && state.active_desktop.is_none();
                 if ui.selectable_label(active, title).clicked() {
                     state.active_tab = i;
+                    state.active_desktop = None;
                 }
                 if ui
                     .small_button("✕")
@@ -35,6 +36,32 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
             }
             if state.tabs.is_empty() {
                 ui.label(egui::RichText::new(state.t("No terminal tabs")).weak());
+            }
+            let mut close_desktop: Option<u64> = None;
+            for d in state.desktops.iter() {
+                let active = state.active_desktop == Some(d.id);
+                let label = format!("🖥 {}", d.title);
+                let resp = ui.selectable_label(active, egui::RichText::new(&label).monospace());
+                if resp.clicked() {
+                    state.active_desktop = Some(d.id);
+                }
+                if ui
+                    .small_button("✕")
+                    .on_hover_text(state.t("Close desktop"))
+                    .clicked()
+                {
+                    close_desktop = Some(d.id);
+                }
+                ui.separator();
+            }
+            if let Some(id) = close_desktop {
+                events.push(UiEvent::CloseDesktop { id });
+                state.desktops.retain(|d| d.id != id);
+                if state.active_desktop == Some(id) {
+                    state.active_desktop = None;
+                }
+                state.desktop_textures.remove(&id);
+                state.desktop_frame_versions.remove(&id);
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -85,10 +112,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
     });
 
     // Session side panels (Xterminal-style): files left, monitor right.
-    let active_host = state
-        .active_pane()
-        .map(|p| p.host_id.clone())
-        .filter(|h| !h.is_empty());
+    let active_host = if state.active_desktop.is_some() {
+        None
+    } else {
+        state
+            .active_pane()
+            .map(|p| p.host_id.clone())
+            .filter(|h| !h.is_empty())
+    };
     if let Some(host_id) = active_host {
         if state.show_files_panel {
             super::filespanel::show(ui, state, data, events, &host_id);
@@ -98,8 +129,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
         }
     }
 
-    // Panes
+    // Panes (or the active remote desktop).
     egui::CentralPanel::default().show(ui, |ui| {
+        if let Some(desktop_id) = state.active_desktop {
+            super::desktop::show(ui, state, data, events, desktop_id);
+            return;
+        }
         if state.tabs.is_empty() {
             ui.centered_and_justified(|ui| {
                 ui.vertical_centered(|ui| {

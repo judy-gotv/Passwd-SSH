@@ -25,10 +25,21 @@ pub mod views;
 pub use i18n::Language;
 
 pub use state::{
-    ConfirmDialog, GroupFilter, HostForm, MainTab, Pane, Screen, Selection, SnippetForm, TermTab,
-    Toast, UiState,
+    ConfirmDialog, DesktopTab, GroupFilter, HostForm, MainTab, Pane, Screen, Selection,
+    SnippetForm, TermTab, Toast, UiState,
 };
 pub use theme::Theme;
+
+/// A running remote-desktop session as seen by the UI.
+#[derive(Clone)]
+pub struct DesktopView {
+    pub id: u64,
+    pub host_id: String,
+    pub name: String,
+    /// "vnc" or "rdp".
+    pub kind: String,
+    pub frame: std::sync::Arc<std::sync::Mutex<opsdeck_desktop::FrameState>>,
+}
 
 /// Actions the app must execute.
 #[derive(Debug, Clone)]
@@ -54,6 +65,21 @@ pub enum UiEvent {
     CreateGroup(String),
     DeleteGroup(String),
     TestConnection(Box<HostForm>),
+    // remote desktop
+    CloseDesktop {
+        id: u64,
+    },
+    DesktopPointer {
+        id: u64,
+        buttons: u8,
+        x: u16,
+        y: u16,
+    },
+    DesktopKey {
+        id: u64,
+        keysym: u32,
+        down: bool,
+    },
     // terminal
     TerminalInput(SessionId, Vec<u8>),
     TerminalResize(SessionId, u16, u16),
@@ -205,6 +231,8 @@ pub struct UiData<'a> {
     pub latencies: &'a HashMap<String, Option<u32>>,
     /// Static host facts (OS / kernel / uptime), fetched once per session.
     pub sysinfo: &'a HashMap<String, SysInfo>,
+    /// Running remote-desktop sessions (VNC/RDP).
+    pub desktops: &'a [DesktopView],
 }
 
 impl<'a> UiData<'a> {
