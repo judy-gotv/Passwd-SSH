@@ -23,6 +23,15 @@ fn map_host(row: &sqlx::sqlite::SqliteRow) -> Result<Host, sqlx::Error> {
         passphrase_credential_id: row.try_get("passphrase_credential_id")?,
         proxy_jump_id: row.try_get("proxy_jump_id")?,
         startup_command: row.try_get("startup_command")?,
+        note: row.try_get("note")?,
+        connect_timeout_secs: row.try_get("connect_timeout_secs")?,
+        keepalive_secs: row.try_get("keepalive_secs")?,
+        term_type: row.try_get("term_type")?,
+        default_path: row.try_get("default_path")?,
+        proxy_url: row.try_get("proxy_url")?,
+        env_json: row.try_get("env_json")?,
+        keepalive_cmd: row.try_get("keepalive_cmd")?,
+        keepalive_cmd_secs: row.try_get("keepalive_cmd_secs")?,
         tags: row
             .try_get::<Option<String>, _>("tags")?
             .unwrap_or_else(|| "[]".to_string()),
@@ -126,8 +135,10 @@ impl HostDao<'_> {
         sqlx::query(
             "INSERT INTO hosts (id, name, group_id, host, port, username, auth_type,
              credential_id, passphrase_credential_id, proxy_jump_id, startup_command,
+             note, connect_timeout_secs, keepalive_secs, term_type, default_path,
+             proxy_url, env_json, keepalive_cmd, keepalive_cmd_secs,
              tags, favorite, last_connected_at, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&host.id)
         .bind(&host.name)
@@ -140,6 +151,15 @@ impl HostDao<'_> {
         .bind(&host.passphrase_credential_id)
         .bind(&host.proxy_jump_id)
         .bind(&host.startup_command)
+        .bind(&host.note)
+        .bind(host.connect_timeout_secs)
+        .bind(host.keepalive_secs)
+        .bind(&host.term_type)
+        .bind(&host.default_path)
+        .bind(&host.proxy_url)
+        .bind(&host.env_json)
+        .bind(&host.keepalive_cmd)
+        .bind(host.keepalive_cmd_secs)
         .bind(&host.tags)
         .bind(if host.favorite { 1i64 } else { 0i64 })
         .bind(host.last_connected_at)
@@ -156,7 +176,9 @@ impl HostDao<'_> {
         let rows = sqlx::query(
             "UPDATE hosts SET name = ?, group_id = ?, host = ?, port = ?, username = ?,
              auth_type = ?, credential_id = ?, passphrase_credential_id = ?,
-             proxy_jump_id = ?, startup_command = ?, tags = ?, favorite = ?,
+             proxy_jump_id = ?, startup_command = ?, note = ?, connect_timeout_secs = ?,
+             keepalive_secs = ?, term_type = ?, default_path = ?, proxy_url = ?,
+             env_json = ?, keepalive_cmd = ?, keepalive_cmd_secs = ?, tags = ?, favorite = ?,
              updated_at = ? WHERE id = ?",
         )
         .bind(&host.name)
@@ -169,6 +191,15 @@ impl HostDao<'_> {
         .bind(&host.passphrase_credential_id)
         .bind(&host.proxy_jump_id)
         .bind(&host.startup_command)
+        .bind(&host.note)
+        .bind(host.connect_timeout_secs)
+        .bind(host.keepalive_secs)
+        .bind(&host.term_type)
+        .bind(&host.default_path)
+        .bind(&host.proxy_url)
+        .bind(&host.env_json)
+        .bind(&host.keepalive_cmd)
+        .bind(host.keepalive_cmd_secs)
         .bind(&host.tags)
         .bind(if host.favorite { 1i64 } else { 0i64 })
         .bind(now)
@@ -796,6 +827,51 @@ mod tests {
             db.hosts().get(&host.id).await,
             Err(StorageError::NotFound(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn host_options_roundtrip() {
+        let db = mem().await;
+        let mut host = Host::new("db-1", "10.0.0.1", "root");
+        host.note = Some("primary db".to_string());
+        host.connect_timeout_secs = Some(10);
+        host.keepalive_secs = Some(15);
+        host.term_type = Some("xterm".to_string());
+        host.default_path = Some("/var/www".to_string());
+        host.proxy_url = Some("socks5://127.0.0.1:1080".to_string());
+        host.env_json = Some(r#"{"FOO":"bar","BAZ":"qux"}"#.to_string());
+        host.keepalive_cmd = Some("ls".to_string());
+        host.keepalive_cmd_secs = Some(120);
+        db.hosts().create(&host).await.unwrap();
+
+        let got = db.hosts().get(&host.id).await.unwrap();
+        assert_eq!(got.note.as_deref(), Some("primary db"));
+        assert_eq!(got.connect_timeout_secs, Some(10));
+        assert_eq!(got.keepalive_secs, Some(15));
+        assert_eq!(got.term_type.as_deref(), Some("xterm"));
+        assert_eq!(got.default_path.as_deref(), Some("/var/www"));
+        assert_eq!(got.proxy_url.as_deref(), Some("socks5://127.0.0.1:1080"));
+        assert_eq!(got.keepalive_cmd.as_deref(), Some("ls"));
+        assert_eq!(got.keepalive_cmd_secs, Some(120));
+        let env = got.env_pairs();
+        assert!(env.contains(&("FOO".to_string(), "bar".to_string())));
+        assert!(env.contains(&("BAZ".to_string(), "qux".to_string())));
+
+        let cfg = got.to_config().unwrap();
+        assert_eq!(cfg.connect_timeout_secs, Some(10));
+        assert_eq!(cfg.keepalive_secs, Some(15));
+        assert_eq!(cfg.term_type.as_deref(), Some("xterm"));
+        assert_eq!(cfg.env.len(), 2);
+        assert_eq!(cfg.keepalive_cmd_secs, Some(120));
+
+        let mut renamed = got.clone();
+        renamed.note = None;
+        renamed.keepalive_secs = Some(0);
+        db.hosts().update(&renamed).await.unwrap();
+        let got2 = db.hosts().get(&host.id).await.unwrap();
+        assert!(got2.note.is_none());
+        assert_eq!(got2.keepalive_secs, Some(0));
+        assert_eq!(got2.to_config().unwrap().keepalive_secs, Some(0));
     }
 
     #[tokio::test]

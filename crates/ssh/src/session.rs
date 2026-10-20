@@ -377,6 +377,12 @@ impl SessionManager {
     ///
     /// Used by the SFTP engine and other subsystems that multiplex channels
     /// over an established SSH connection.
+    /// The stored config of a session.
+    pub async fn config_for(&self, id: SessionId) -> Option<HostConfig> {
+        let inner = self.inner.lock().await;
+        inner.sessions.get(&id).map(|s| s.config.clone())
+    }
+
     pub async fn handle_for(&self, id: SessionId) -> Result<Arc<Mutex<ClientHandle>>, SshError> {
         let inner = self.inner.lock().await;
         let s = inner.sessions.get(&id).ok_or(SshError::SessionNotFound)?;
@@ -414,9 +420,14 @@ impl SessionManager {
 
     // -- dialing ------------------------------------------------------------
 
-    fn russh_config() -> Arc<client::Config> {
+    fn russh_config_for(config: &HostConfig) -> Arc<client::Config> {
+        let keepalive = match config.keepalive_secs {
+            None => Some(Duration::from_secs(30)),
+            Some(0) => None,
+            Some(secs) => Some(Duration::from_secs(secs as u64)),
+        };
         Arc::new(client::Config {
-            keepalive_interval: Some(Duration::from_secs(30)),
+            keepalive_interval: keepalive,
             keepalive_max: 3,
             nodelay: true,
             ..Default::default()
@@ -433,13 +444,51 @@ impl SessionManager {
     }
 
     async fn dial_direct(&self, config: &HostConfig) -> Result<ClientHandle, SshError> {
+        let timeout_secs = config.connect_timeout_secs.unwrap_or(20).max(1);
+        if let Some(proxy) = config.proxy_url.as_deref().filter(|p| !p.trim().is_empty()) {
+            return self.dial_via_proxy(config, proxy, timeout_secs).await;
+        }
         let handler = self.handler_for(config);
         let addrs = (config.host.as_str(), config.port);
-        let connect = russh::client::connect(Self::russh_config(), addrs, handler);
-        tokio::time::timeout(Duration::from_secs(20), connect)
+        let connect = russh::client::connect(Self::russh_config_for(config), addrs, handler);
+        tokio::time::timeout(Duration::from_secs(timeout_secs as u64), connect)
             .await
-            .map_err(|_| SshError::Timeout("TCP connect timed out after 20s".into()))?
+            .map_err(|_| SshError::Timeout(format!("TCP connect timed out after {timeout_secs}s")))?
             .map_err(|e: SshError| SshError::Connection(format!("connect failed: {e}")))
+    }
+
+    /// Dial the target through an HTTP CONNECT or SOCKS5 proxy, then run the
+    /// SSH handshake over that stream.
+    async fn dial_via_proxy(
+        &self,
+        config: &HostConfig,
+        proxy_url: &str,
+        timeout_secs: u32,
+    ) -> Result<ClientHandle, SshError> {
+        let parsed = parse_proxy_url(proxy_url)
+            .ok_or_else(|| SshError::Connection(format!("bad proxy URL: {proxy_url}")))?;
+        let deadline = Duration::from_secs(timeout_secs as u64);
+        let stream = tokio::time::timeout(deadline, async {
+            let mut tcp = tokio::net::TcpStream::connect((parsed.host.as_str(), parsed.port))
+                .await
+                .map_err(|e| SshError::Connection(format!("proxy connect failed: {e}")))?;
+            match parsed.kind {
+                ProxyKind::Socks5 => {
+                    socks5_handshake(&mut tcp, &parsed, &config.host, config.port).await?;
+                }
+                ProxyKind::Http => {
+                    http_connect(&mut tcp, &parsed, &config.host, config.port).await?;
+                }
+            }
+            Ok::<_, SshError>(tcp)
+        })
+        .await
+        .map_err(|_| SshError::Timeout("proxy connect timed out".into()))??;
+
+        let handler = self.handler_for(config);
+        russh::client::connect_stream(Self::russh_config_for(config), stream, handler)
+            .await
+            .map_err(|e: SshError| SshError::Connection(format!("connect via proxy failed: {e}")))
     }
 
     async fn dial_via(
@@ -455,7 +504,7 @@ impl SessionManager {
             .map_err(|e| SshError::Connection(format!("proxyjump channel failed: {e}")))?;
         let stream = channel.into_stream();
         let handler = self.handler_for(config);
-        russh::client::connect_stream(Self::russh_config(), stream, handler)
+        russh::client::connect_stream(Self::russh_config_for(config), stream, handler)
             .await
             .map_err(|e: SshError| {
                 SshError::Connection(format!("connect via jump host failed: {e}"))
@@ -596,8 +645,19 @@ impl SessionManager {
             .await
             .map_err(|e| SshError::Channel(format!("open session channel: {e}")))?;
         let (mut read_half, write_half) = channel.split();
+        let term = self
+            .config_for(id)
+            .await
+            .and_then(|c| c.term_type)
+            .filter(|t| !t.trim().is_empty())
+            .unwrap_or_else(|| "xterm-256color".to_string());
+        let env = self.config_for(id).await.map(|c| c.env).unwrap_or_default();
+        for (name, value) in &env {
+            // Best effort: many servers refuse env requests (AcceptEnv).
+            let _ = write_half.set_env(true, name.clone(), value.clone()).await;
+        }
         write_half
-            .request_pty(true, "xterm-256color", cols as u32, rows as u32, 0, 0, &[])
+            .request_pty(true, term.as_str(), cols as u32, rows as u32, 0, 0, &[])
             .await
             .map_err(|e| SshError::Channel(format!("pty request: {e}")))?;
         write_half
@@ -914,5 +974,249 @@ mod tests {
     fn host_key_decision_is_copy() {
         let d = HostKeyDecision::TrustOnce;
         let _ = d;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Outbound proxies (HTTP CONNECT / SOCKS5)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProxyKind {
+    Http,
+    Socks5,
+}
+
+#[derive(Debug, Clone)]
+struct ProxyUrl {
+    kind: ProxyKind,
+    host: String,
+    port: u16,
+    user: Option<String>,
+    pass: Option<String>,
+}
+
+/// Parse `socks5://[user:pass@]host[:port]` / `http://...` proxy URLs.
+fn parse_proxy_url(url: &str) -> Option<ProxyUrl> {
+    let (kind, rest, default_port) = if let Some(r) = url.strip_prefix("socks5://") {
+        (ProxyKind::Socks5, r, 1080)
+    } else {
+        let r = url.strip_prefix("http://")?;
+        (ProxyKind::Http, r, 8080)
+    };
+    let rest = rest.split('/').next().unwrap_or("");
+    let (userinfo, hostport) = match rest.rsplit_once('@') {
+        Some((ui, hp)) => (Some(ui), hp),
+        None => (None, rest),
+    };
+    let (user, pass) = match userinfo {
+        Some(ui) => match ui.split_once(':') {
+            Some((u, p)) => (Some(u.to_string()), Some(p.to_string())),
+            None => (Some(ui.to_string()), None),
+        },
+        None => (None, None),
+    };
+    let (host, port) = match hostport.rsplit_once(':') {
+        Some((h, p)) => (h.to_string(), p.parse().ok()?),
+        None => (hostport.to_string(), default_port),
+    };
+    if host.is_empty() {
+        return None;
+    }
+    Some(ProxyUrl {
+        kind,
+        host,
+        port,
+        user,
+        pass,
+    })
+}
+
+async fn socks5_handshake(
+    tcp: &mut tokio::net::TcpStream,
+    proxy: &ProxyUrl,
+    target_host: &str,
+    target_port: u16,
+) -> Result<(), SshError> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    // (imports used below)
+    // Method negotiation: offer no-auth, plus username/password when given.
+    let mut greet = vec![0x05u8, if proxy.user.is_some() { 2 } else { 1 }];
+    greet.push(0x00);
+    if proxy.user.is_some() {
+        greet.push(0x02);
+    }
+    tcp.write_all(&greet)
+        .await
+        .map_err(|e| SshError::Connection(format!("socks5 greet failed: {e}")))?;
+    let mut method = [0u8; 2];
+    tcp.read_exact(&mut method)
+        .await
+        .map_err(|e| SshError::Connection(format!("socks5 method reply failed: {e}")))?;
+    if method[0] != 0x05 {
+        return Err(SshError::Connection("socks5: bad version".into()));
+    }
+    match method[1] {
+        0x00 => {}
+        0x02 => {
+            let user = proxy.user.as_deref().unwrap_or("");
+            let pass = proxy.pass.as_deref().unwrap_or("");
+            let ub = user.as_bytes();
+            let pb = pass.as_bytes();
+            if ub.len() > 255 || pb.len() > 255 {
+                return Err(SshError::Connection("socks5 auth too long".into()));
+            }
+            let mut auth = vec![0x01u8, ub.len() as u8];
+            auth.extend_from_slice(ub);
+            auth.push(pb.len() as u8);
+            auth.extend_from_slice(pb);
+            tcp.write_all(&auth)
+                .await
+                .map_err(|e| SshError::Connection(format!("socks5 auth failed: {e}")))?;
+            let mut resp = [0u8; 2];
+            tcp.read_exact(&mut resp)
+                .await
+                .map_err(|e| SshError::Connection(format!("socks5 auth reply failed: {e}")))?;
+            if resp[1] != 0x00 {
+                return Err(SshError::Connection("socks5 auth rejected".into()));
+            }
+        }
+        _ => return Err(SshError::Connection("socks5: no acceptable method".into())),
+    }
+    // CONNECT request (domain-name address form).
+    let hb = target_host.as_bytes();
+    if hb.len() > 255 {
+        return Err(SshError::Connection("socks5 target name too long".into()));
+    }
+    let mut req = vec![0x05u8, 0x01, 0x00, 0x03, hb.len() as u8];
+    req.extend_from_slice(hb);
+    req.extend_from_slice(&target_port.to_be_bytes());
+    tcp.write_all(&req)
+        .await
+        .map_err(|e| SshError::Connection(format!("socks5 connect failed: {e}")))?;
+    let mut reply = [0u8; 4];
+    tcp.read_exact(&mut reply)
+        .await
+        .map_err(|e| SshError::Connection(format!("socks5 connect reply failed: {e}")))?;
+    if reply[0] != 0x05 || reply[1] != 0x00 {
+        return Err(SshError::Connection(format!(
+            "socks5 connect rejected (rep {:#04x})",
+            reply[1]
+        )));
+    }
+    // Skip the bound address.
+    let skip = match reply[3] {
+        0x01 => 4 + 2,
+        0x03 => {
+            let mut len = [0u8; 1];
+            tcp.read_exact(&mut len)
+                .await
+                .map_err(|e| SshError::Connection(format!("socks5 bnd.addr failed: {e}")))?;
+            len[0] as usize + 2
+        }
+        0x04 => 16 + 2,
+        _ => return Err(SshError::Connection("socks5: bad address type".into())),
+    };
+    let mut buf = vec![0u8; skip];
+    tcp.read_exact(&mut buf)
+        .await
+        .map_err(|e| SshError::Connection(format!("socks5 bnd.addr failed: {e}")))?;
+    Ok(())
+}
+
+async fn http_connect(
+    tcp: &mut tokio::net::TcpStream,
+    proxy: &ProxyUrl,
+    target_host: &str,
+    target_port: u16,
+) -> Result<(), SshError> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut request = format!(
+        "CONNECT {target_host}:{target_port} HTTP/1.1\r\nHost: {target_host}:{target_port}\r\n"
+    );
+    if let Some(user) = &proxy.user {
+        let pass = proxy.pass.as_deref().unwrap_or("");
+        let cred = base64_line(format!("{user}:{pass}").as_bytes());
+        request.push_str(&format!("Proxy-Authorization: Basic {cred}\r\n"));
+    }
+    request.push_str("\r\n");
+    tcp.write_all(request.as_bytes())
+        .await
+        .map_err(|e| SshError::Connection(format!("proxy CONNECT failed: {e}")))?;
+    // Read the response header (bounded).
+    let mut head = Vec::new();
+    let mut one = [0u8; 1];
+    while head.len() < 8192 {
+        tcp.read_exact(&mut one)
+            .await
+            .map_err(|e| SshError::Connection(format!("proxy response failed: {e}")))?;
+        head.push(one[0]);
+        if head.ends_with(b"\r\n\r\n") {
+            break;
+        }
+    }
+    let status = String::from_utf8_lossy(&head);
+    let first_line = status.lines().next().unwrap_or("");
+    if !first_line.contains(" 200") {
+        return Err(SshError::Connection(format!(
+            "proxy refused CONNECT: {first_line}"
+        )));
+    }
+    Ok(())
+}
+
+/// Minimal base64 (padding included); std-only so we do not add a dependency.
+fn base64_line(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let mut n: u32 = 0;
+        for &b in chunk {
+            n = (n << 8) | b as u32;
+        }
+        n <<= 8 * (3 - chunk.len());
+        let pad = 3 - chunk.len();
+        for i in 0..4 {
+            if i < 4 - pad {
+                out.push(ALPHABET[((n >> (18 - 6 * i)) & 0x3f) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod proxy_tests {
+    use super::{ProxyKind, base64_line, parse_proxy_url};
+
+    #[test]
+    fn proxy_url_parsing() {
+        let p = parse_proxy_url("socks5://127.0.0.1:1080").unwrap();
+        assert_eq!(p.kind, ProxyKind::Socks5);
+        assert_eq!(p.port, 1080);
+        assert!(p.user.is_none());
+
+        let p = parse_proxy_url("socks5://u:p@proxy.example.com").unwrap();
+        assert_eq!(p.port, 1080);
+        assert_eq!(p.user.as_deref(), Some("u"));
+        assert_eq!(p.pass.as_deref(), Some("p"));
+
+        let p = parse_proxy_url("http://proxy:3128").unwrap();
+        assert_eq!(p.kind, ProxyKind::Http);
+        assert_eq!(p.port, 3128);
+
+        let p = parse_proxy_url("socks5://host").unwrap();
+        assert_eq!(p.port, 1080);
+
+        assert!(parse_proxy_url("ftp://host").is_none());
+        assert!(parse_proxy_url("socks5://").is_none());
+    }
+
+    #[test]
+    fn base64_works() {
+        assert_eq!(base64_line(b"user:pass"), "dXNlcjpwYXNz");
+        assert_eq!(base64_line(b""), "");
     }
 }

@@ -77,6 +77,25 @@ pub struct Host {
     pub passphrase_credential_id: Option<String>,
     pub proxy_jump_id: Option<String>,
     pub startup_command: Option<String>,
+    /// Free-form note shown in the manager tooltip.
+    pub note: Option<String>,
+    /// TCP/SSH connect timeout (seconds). None = 20s default.
+    pub connect_timeout_secs: Option<i64>,
+    /// Protocol keepalive interval (seconds). None = 30s default, 0 = off.
+    pub keepalive_secs: Option<i64>,
+    /// PTY terminal type (e.g. "xterm-256color"). None = xterm-256color.
+    pub term_type: Option<String>,
+    /// Working directory to `cd` into right after the shell opens.
+    pub default_path: Option<String>,
+    /// Outbound proxy URL (socks5://host:port or http://host:port).
+    /// None = direct connection.
+    pub proxy_url: Option<String>,
+    /// JSON object of session environment variables ({"K": "V"}).
+    pub env_json: Option<String>,
+    /// Command run via exec every `keepalive_cmd_secs` to keep NAT/firewall
+    /// sessions from idling out. None = protocol keepalive only.
+    pub keepalive_cmd: Option<String>,
+    pub keepalive_cmd_secs: Option<i64>,
     /// JSON array of tag strings.
     pub tags: String,
     pub favorite: bool,
@@ -105,6 +124,15 @@ impl Host {
             passphrase_credential_id: None,
             proxy_jump_id: None,
             startup_command: None,
+            note: None,
+            connect_timeout_secs: None,
+            keepalive_secs: None,
+            term_type: None,
+            default_path: None,
+            proxy_url: None,
+            env_json: None,
+            keepalive_cmd: None,
+            keepalive_cmd_secs: None,
             tags: "[]".to_string(),
             favorite: false,
             last_connected_at: None,
@@ -170,7 +198,29 @@ impl Host {
                 .map_err(|e| crate::StorageError::InvalidData(e.to_string()))?,
             startup_command: self.startup_command.clone(),
             tags: self.tag_list(),
+            connect_timeout_secs: self
+                .connect_timeout_secs
+                .and_then(|v| u32::try_from(v).ok()),
+            keepalive_secs: self.keepalive_secs.and_then(|v| u32::try_from(v).ok()),
+            term_type: self.term_type.clone(),
+            default_path: self.default_path.clone(),
+            proxy_url: self.proxy_url.clone(),
+            env: self.env_pairs(),
+            keepalive_cmd: self.keepalive_cmd.clone(),
+            keepalive_cmd_secs: self.keepalive_cmd_secs.and_then(|v| u32::try_from(v).ok()),
         })
+    }
+
+    /// Decode `env_json` into (name, value) pairs.
+    pub fn env_pairs(&self) -> Vec<(String, String)> {
+        let Some(json) = &self.env_json else {
+            return Vec::new();
+        };
+        let Ok(map) = serde_json::from_str::<std::collections::BTreeMap<String, String>>(json)
+        else {
+            return Vec::new();
+        };
+        map.into_iter().collect()
     }
 }
 
@@ -186,6 +236,46 @@ pub struct HostConfig {
     pub proxy_jump: Option<Uuid>,
     pub startup_command: Option<String>,
     pub tags: Vec<String>,
+    /// Connect timeout in seconds. None = 20s default.
+    pub connect_timeout_secs: Option<u32>,
+    /// Protocol keepalive interval in seconds. None = 30s, Some(0) = off.
+    pub keepalive_secs: Option<u32>,
+    /// PTY terminal type. None = "xterm-256color".
+    pub term_type: Option<String>,
+    /// `cd` target applied right after the shell opens.
+    pub default_path: Option<String>,
+    /// Outbound proxy URL (socks5:// / http://). None = direct.
+    pub proxy_url: Option<String>,
+    /// Session environment variables to request on shell open.
+    pub env: Vec<(String, String)>,
+    /// Command exec'd every `keepalive_cmd_secs` seconds. None = off.
+    pub keepalive_cmd: Option<String>,
+    pub keepalive_cmd_secs: Option<u32>,
+}
+
+impl HostConfig {
+    /// A bare config with default options (tests / ad-hoc connections).
+    pub fn bare(id: Uuid, name: String, host: String, port: u16, username: String) -> Self {
+        Self {
+            id,
+            name,
+            host,
+            port,
+            username,
+            auth: AuthMethod::Password,
+            proxy_jump: None,
+            startup_command: None,
+            tags: Vec::new(),
+            connect_timeout_secs: None,
+            keepalive_secs: None,
+            term_type: None,
+            default_path: None,
+            proxy_url: None,
+            env: Vec::new(),
+            keepalive_cmd: None,
+            keepalive_cmd_secs: None,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

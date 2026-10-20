@@ -205,6 +205,32 @@ pub(crate) fn host_form_from(host: &opsdeck_storage::models::Host, data: &UiData
         group_id: host.group_id.clone().unwrap_or_default(),
         proxy_jump_id: host.proxy_jump_id.clone().unwrap_or_default(),
         startup_command: host.startup_command.clone().unwrap_or_default(),
+        note: host.note.clone().unwrap_or_default(),
+        connect_timeout: host
+            .connect_timeout_secs
+            .map(|v| v.to_string())
+            .unwrap_or_default(),
+        keepalive_secs: host
+            .keepalive_secs
+            .map(|v| v.to_string())
+            .unwrap_or_default(),
+        term_type: host
+            .term_type
+            .clone()
+            .unwrap_or_else(|| "xterm-256color".to_string()),
+        default_path: host.default_path.clone().unwrap_or_default(),
+        proxy_url: host.proxy_url.clone().unwrap_or_default(),
+        env_vars: host
+            .env_pairs()
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        keepalive_cmd: host.keepalive_cmd.clone().unwrap_or_default(),
+        keepalive_cmd_secs: host
+            .keepalive_cmd_secs
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "300".to_string()),
         tags: host.tag_list().join(", "),
         favorite: host.favorite,
         password: String::new(),

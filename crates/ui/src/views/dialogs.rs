@@ -99,6 +99,7 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
     let is_new = state.host_form.id.is_none();
     let mut save = false;
     let mut cancel = false;
+    let mut test = false;
 
     egui::Window::new(if is_new {
         state.t("Add host")
@@ -107,189 +108,37 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
     })
     .collapsible(false)
     .resizable(true)
-    .default_width(440.0)
+    .default_width(660.0)
     .show(ctx, |ui| {
-        egui::Grid::new("host_form_grid")
-            .num_columns(2)
-            .spacing([8.0, 6.0])
-            .show(ui, |ui| {
-                ui.label(state.t("Name:"));
-                ui.text_edit_singleline(&mut state.host_form.name);
-                ui.end_row();
-                ui.label(state.t("Host:"));
-                ui.text_edit_singleline(&mut state.host_form.host);
-                ui.end_row();
-                ui.label(state.t("Port:"));
-                ui.text_edit_singleline(&mut state.host_form.port);
-                ui.end_row();
-                ui.label(state.t("Username:"));
-                ui.text_edit_singleline(&mut state.host_form.username);
-                ui.end_row();
-                ui.label(state.t("Group:"));
-                egui::ComboBox::from_id_salt("host_form_group")
-                    .selected_text(
-                        data.groups
-                            .iter()
-                            .find(|g| g.id == state.host_form.group_id)
-                            .map(|g| g.name.clone())
-                            .unwrap_or_else(|| state.t("— none —").to_string()),
-                    )
-                    .show_ui(ui, |ui| {
-                        if ui
-                            .selectable_label(
-                                state.host_form.group_id.is_empty(),
-                                state.t("— none —"),
-                            )
-                            .clicked()
-                        {
-                            state.host_form.group_id.clear();
-                        }
-                        for g in data.groups {
-                            if ui
-                                .selectable_label(state.host_form.group_id == g.id, &g.name)
-                                .clicked()
-                            {
-                                state.host_form.group_id = g.id.clone();
-                            }
-                        }
-                    });
-                ui.end_row();
-                ui.label(state.t("Jump host:"));
-                egui::ComboBox::from_id_salt("host_form_jump")
-                    .selected_text(
-                        data.hosts
-                            .iter()
-                            .find(|h| h.id == state.host_form.proxy_jump_id)
-                            .map(|h| h.name.clone())
-                            .unwrap_or_else(|| "— none —".to_string()),
-                    )
-                    .show_ui(ui, |ui| {
-                        if ui
-                            .selectable_label(
-                                state.host_form.proxy_jump_id.is_empty(),
-                                state.t("— none —"),
-                            )
-                            .clicked()
-                        {
-                            state.host_form.proxy_jump_id.clear();
-                        }
-                        for h in data.hosts {
-                            // Don't allow jumping through itself.
-                            if Some(h.id.as_str()) == state.host_form.id.as_deref() {
-                                continue;
-                            }
-                            if ui
-                                .selectable_label(state.host_form.proxy_jump_id == h.id, &h.name)
-                                .clicked()
-                            {
-                                state.host_form.proxy_jump_id = h.id.clone();
-                            }
-                        }
-                    });
-                ui.end_row();
-                ui.label(state.t("Auth:"));
-                ui.horizontal(|ui| {
-                    for (id, label) in [
-                        ("password", state.t("Password")),
-                        ("private_key", state.t("Key")),
-                        ("agent", state.t("Agent")),
-                    ] {
-                        if ui
-                            .selectable_label(state.host_form.auth_type == id, label)
-                            .clicked()
-                        {
-                            state.host_form.auth_type = id.to_string();
-                        }
-                    }
-                });
-                ui.end_row();
-            });
-
-        // Credential section
-        ui.add_space(4.0);
-        ui.label(egui::RichText::new(state.t("Credential")).strong());
-        if !data.credentials.is_empty() {
-            egui::ComboBox::from_id_salt("host_form_cred")
-                .selected_text(
-                    data.credentials
-                        .iter()
-                        .find(|c| c.id == state.host_form.credential_id)
-                        .map(|c| c.name.clone())
-                        .unwrap_or_else(|| state.t("— new —").to_string()),
-                )
-                .show_ui(ui, |ui| {
+        ui.horizontal_top(|ui| {
+            // Section navigation (Xterminal-style).
+            ui.vertical(|ui| {
+                ui.set_width(120.0);
+                for (idx, label) in [
+                    (0usize, state.t("Basic info")),
+                    (1, state.t("Connection")),
+                    (2, state.t("Jump host")),
+                    (3, state.t("Proxy")),
+                    (4, state.t("Other")),
+                    (5, state.t("Init")),
+                ] {
                     if ui
-                        .selectable_label(
-                            state.host_form.credential_id.is_empty(),
-                            state.t("— new —"),
-                        )
+                        .selectable_label(state.host_editor_section == idx, label)
                         .clicked()
                     {
-                        state.host_form.credential_id.clear();
+                        state.host_editor_section = idx;
                     }
-                    for c in data.credentials {
-                        if ui
-                            .selectable_label(state.host_form.credential_id == c.id, &c.name)
-                            .clicked()
-                        {
-                            state.host_form.credential_id = c.id.clone();
-                        }
-                    }
-                });
-        }
-        if state.host_form.credential_id.is_empty() {
-            match state.host_form.auth_type.as_str() {
-                "password" => {
-                    ui.horizontal(|ui| {
-                        ui.label(state.t("Password:"));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut state.host_form.password)
-                                .password(true),
-                        );
-                    });
                 }
-                "private_key" => {
-                    ui.label(state.t("Private key (PEM):"));
-                    ui.add(
-                        egui::TextEdit::multiline(&mut state.host_form.private_key_pem)
-                            .desired_rows(4)
-                            .desired_width(f32::INFINITY),
-                    );
-                    ui.horizontal(|ui| {
-                        ui.label(state.t("Passphrase:"));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut state.host_form.passphrase)
-                                .password(true),
-                        );
-                    });
-                }
-                _ => {
-                    ui.label(
-                        egui::RichText::new(
-                            state.t("Uses your local SSH agent (no stored secret)."),
-                        )
-                        .small()
-                        .weak(),
-                    );
-                }
-            }
-        }
-
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.label(state.t("Startup cmd:"));
-            let optional_hint = state.t("optional");
-            ui.add(
-                egui::TextEdit::singleline(&mut state.host_form.startup_command)
-                    .hint_text(optional_hint)
-                    .desired_width(200.0),
-            );
-        });
-        ui.horizontal(|ui| {
-            ui.label(state.t("Tags (comma separated):"));
-            ui.text_edit_singleline(&mut state.host_form.tags);
-            let fav_label = state.t("★ Favorite");
-            ui.checkbox(&mut state.host_form.favorite, fav_label);
+            });
+            ui.separator();
+            ui.vertical(|ui| match state.host_editor_section {
+                0 => section_basic(ui, state, data),
+                1 => section_connection(ui, state),
+                2 => section_jump(ui, state, data),
+                3 => section_proxy(ui, state),
+                4 => section_other(ui, state),
+                _ => section_init(ui, state),
+            });
         });
 
         if let Some(err) = state.host_form.error.clone() {
@@ -297,16 +146,25 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
         }
 
         ui.add_space(8.0);
+        ui.separator();
         ui.horizontal(|ui| {
-            if ui.button(state.t("Save")).clicked() {
-                save = true;
+            if ui.button(state.t("Test connection")).clicked() {
+                test = true;
             }
-            if ui.button(state.t("Cancel")).clicked() {
-                cancel = true;
-            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button(state.t("Save")).clicked() {
+                    save = true;
+                }
+                if ui.button(state.t("Cancel")).clicked() {
+                    cancel = true;
+                }
+            });
         });
     });
 
+    if test {
+        events.push(UiEvent::TestConnection(Box::new(state.host_form.clone())));
+    }
     if save {
         // Validate.
         let err = if state.host_form.name.trim().is_empty() {
@@ -335,6 +193,288 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
         state.show_host_editor = false;
         state.host_form = HostForm::blank();
     }
+}
+
+/// Basic info: identity, group, auth, credential, note.
+fn section_basic(ui: &mut egui::Ui, state: &mut UiState, data: &UiData) {
+    egui::Grid::new("host_basic_grid")
+        .num_columns(2)
+        .spacing([8.0, 6.0])
+        .show(ui, |ui| {
+            ui.label(state.t("Name:"));
+            ui.text_edit_singleline(&mut state.host_form.name);
+            ui.end_row();
+            ui.label(state.t("Host:"));
+            ui.horizontal(|ui| {
+                ui.add(egui::TextEdit::singleline(&mut state.host_form.host).desired_width(200.0));
+                ui.label(state.t("Port:"));
+                ui.add(egui::TextEdit::singleline(&mut state.host_form.port).desired_width(60.0));
+            });
+            ui.end_row();
+            ui.label(state.t("Group:"));
+            egui::ComboBox::from_id_salt("host_form_group")
+                .selected_text(
+                    data.groups
+                        .iter()
+                        .find(|g| g.id == state.host_form.group_id)
+                        .map(|g| g.name.clone())
+                        .unwrap_or_else(|| state.t("— none —").to_string()),
+                )
+                .show_ui(ui, |ui| {
+                    if ui
+                        .selectable_label(state.host_form.group_id.is_empty(), state.t("— none —"))
+                        .clicked()
+                    {
+                        state.host_form.group_id.clear();
+                    }
+                    for g in data.groups {
+                        if ui
+                            .selectable_label(state.host_form.group_id == g.id, &g.name)
+                            .clicked()
+                        {
+                            state.host_form.group_id = g.id.clone();
+                        }
+                    }
+                });
+            ui.end_row();
+            ui.label(state.t("Auth:"));
+            ui.horizontal(|ui| {
+                for (id, label) in [
+                    ("password", state.t("Password")),
+                    ("private_key", state.t("Key")),
+                    ("agent", state.t("Agent")),
+                ] {
+                    if ui
+                        .selectable_label(state.host_form.auth_type == id, label)
+                        .clicked()
+                    {
+                        state.host_form.auth_type = id.to_string();
+                    }
+                }
+            });
+            ui.end_row();
+            ui.label(state.t("Username:"));
+            ui.text_edit_singleline(&mut state.host_form.username);
+            ui.end_row();
+        });
+
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new(state.t("Credential")).strong());
+    if !data.credentials.is_empty() {
+        egui::ComboBox::from_id_salt("host_form_cred")
+            .selected_text(
+                data.credentials
+                    .iter()
+                    .find(|c| c.id == state.host_form.credential_id)
+                    .map(|c| c.name.clone())
+                    .unwrap_or_else(|| state.t("— new —").to_string()),
+            )
+            .show_ui(ui, |ui| {
+                if ui
+                    .selectable_label(state.host_form.credential_id.is_empty(), state.t("— new —"))
+                    .clicked()
+                {
+                    state.host_form.credential_id.clear();
+                }
+                for c in data.credentials {
+                    if ui
+                        .selectable_label(state.host_form.credential_id == c.id, &c.name)
+                        .clicked()
+                    {
+                        state.host_form.credential_id = c.id.clone();
+                    }
+                }
+            });
+    }
+    if state.host_form.credential_id.is_empty() {
+        match state.host_form.auth_type.as_str() {
+            "password" => {
+                ui.horizontal(|ui| {
+                    ui.label(state.t("Password:"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut state.host_form.password).password(true),
+                    );
+                });
+            }
+            "private_key" => {
+                ui.label(state.t("Private key (PEM):"));
+                ui.add(
+                    egui::TextEdit::multiline(&mut state.host_form.private_key_pem)
+                        .desired_rows(4)
+                        .desired_width(f32::INFINITY),
+                );
+                ui.horizontal(|ui| {
+                    ui.label(state.t("Passphrase:"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut state.host_form.passphrase).password(true),
+                    );
+                });
+            }
+            _ => {
+                ui.label(
+                    egui::RichText::new(state.t("Uses your local SSH agent (no stored secret)."))
+                        .small()
+                        .weak(),
+                );
+            }
+        }
+    }
+
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        let fav_label = state.t("★ Favorite");
+        ui.checkbox(&mut state.host_form.favorite, fav_label);
+    });
+    ui.horizontal(|ui| {
+        ui.label(state.t("Note:"));
+        ui.text_edit_singleline(&mut state.host_form.note);
+    });
+}
+
+/// Connection settings: timeout, keepalive, terminal type.
+fn section_connection(ui: &mut egui::Ui, state: &mut UiState) {
+    egui::Grid::new("host_conn_grid")
+        .num_columns(2)
+        .spacing([8.0, 6.0])
+        .show(ui, |ui| {
+            ui.label(state.t("Connect timeout (sec):"));
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut state.host_form.connect_timeout)
+                        .desired_width(80.0),
+                );
+                ui.label(
+                    egui::RichText::new(state.t("empty = default"))
+                        .small()
+                        .weak(),
+                );
+            });
+            ui.end_row();
+            ui.label(state.t("Keepalive (sec):"));
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut state.host_form.keepalive_secs)
+                        .desired_width(80.0),
+                );
+                ui.label(
+                    egui::RichText::new(state.t("0 = off, empty = 30"))
+                        .small()
+                        .weak(),
+                );
+            });
+            ui.end_row();
+            ui.label(state.t("Terminal type:"));
+            ui.text_edit_singleline(&mut state.host_form.term_type);
+            ui.end_row();
+        });
+}
+
+/// Jump host picker.
+fn section_jump(ui: &mut egui::Ui, state: &mut UiState, data: &UiData) {
+    ui.horizontal(|ui| {
+        ui.label(state.t("Jump host:"));
+        egui::ComboBox::from_id_salt("host_form_jump")
+            .selected_text(
+                data.hosts
+                    .iter()
+                    .find(|h| h.id == state.host_form.proxy_jump_id)
+                    .map(|h| h.name.clone())
+                    .unwrap_or_else(|| state.t("— none —").to_string()),
+            )
+            .show_ui(ui, |ui| {
+                if ui
+                    .selectable_label(
+                        state.host_form.proxy_jump_id.is_empty(),
+                        state.t("— none —"),
+                    )
+                    .clicked()
+                {
+                    state.host_form.proxy_jump_id.clear();
+                }
+                for h in data.hosts {
+                    if Some(h.id.as_str()) == state.host_form.id.as_deref() {
+                        continue;
+                    }
+                    if ui
+                        .selectable_label(state.host_form.proxy_jump_id == h.id, &h.name)
+                        .clicked()
+                    {
+                        state.host_form.proxy_jump_id = h.id.clone();
+                    }
+                }
+            });
+    });
+}
+
+/// Proxy settings.
+fn section_proxy(ui: &mut egui::Ui, state: &mut UiState) {
+    ui.horizontal(|ui| {
+        ui.label(state.t("Proxy URL:"));
+        ui.add(
+            egui::TextEdit::singleline(&mut state.host_form.proxy_url)
+                .hint_text("socks5://127.0.0.1:1080")
+                .desired_width(280.0),
+        );
+    });
+    ui.label(
+        egui::RichText::new(state.t("HTTP CONNECT and SOCKS5 are supported."))
+            .small()
+            .weak(),
+    );
+}
+
+/// Other settings: tags, default path.
+fn section_other(ui: &mut egui::Ui, state: &mut UiState) {
+    egui::Grid::new("host_other_grid")
+        .num_columns(2)
+        .spacing([8.0, 6.0])
+        .show(ui, |ui| {
+            ui.label(state.t("Tags (comma separated):"));
+            ui.text_edit_singleline(&mut state.host_form.tags);
+            ui.end_row();
+            ui.label(state.t("Default path:"));
+            ui.add(
+                egui::TextEdit::singleline(&mut state.host_form.default_path)
+                    .hint_text("/var/www")
+                    .desired_width(240.0),
+            );
+            ui.end_row();
+        });
+}
+
+/// Init: startup command, keepalive command, environment variables.
+fn section_init(ui: &mut egui::Ui, state: &mut UiState) {
+    egui::Grid::new("host_init_grid")
+        .num_columns(2)
+        .spacing([8.0, 6.0])
+        .show(ui, |ui| {
+            ui.label(state.t("Startup cmd:"));
+            ui.add(
+                egui::TextEdit::singleline(&mut state.host_form.startup_command)
+                    .desired_width(280.0),
+            );
+            ui.end_row();
+            ui.label(state.t("Keepalive command:"));
+            ui.add(
+                egui::TextEdit::singleline(&mut state.host_form.keepalive_cmd)
+                    .hint_text("ls")
+                    .desired_width(280.0),
+            );
+            ui.end_row();
+            ui.label(state.t("Keepalive period (sec):"));
+            ui.add(
+                egui::TextEdit::singleline(&mut state.host_form.keepalive_cmd_secs)
+                    .desired_width(80.0),
+            );
+            ui.end_row();
+        });
+    ui.add_space(4.0);
+    ui.label(state.t("Env vars (KEY=value per line):"));
+    ui.add(
+        egui::TextEdit::multiline(&mut state.host_form.env_vars)
+            .desired_rows(4)
+            .desired_width(f32::INFINITY),
+    );
 }
 
 // ---------------------------------------------------------------------------

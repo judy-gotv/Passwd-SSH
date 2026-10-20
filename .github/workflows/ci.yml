@@ -44,6 +44,27 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Start test sshd (Linux e2e)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y openssh-server
+          sudo ssh-keygen -A
+          sudo useradd -m -s /bin/bash testssh || true
+          echo "testssh:testpass123" | sudo chpasswd
+          sudo mkdir -p /run/sshd
+          cat <<'EOF' | sudo tee /tmp/sshd_test_config
+          Port 2222
+          Protocol 2
+          HostKey /etc/ssh/ssh_host_rsa_key
+          HostKey /etc/ssh/ssh_host_ed25519_key
+          PasswordAuthentication yes
+          PubkeyAuthentication no
+          UsePAM no
+          PermitRootLogin no
+          PidFile /tmp/sshd_test.pid
+          EOF
+          sudo /usr/sbin/sshd -f /tmp/sshd_test_config
+
       - name: test
         run: cargo test --workspace
 

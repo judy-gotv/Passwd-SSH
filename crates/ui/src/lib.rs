@@ -53,6 +53,7 @@ pub enum UiEvent {
     PingHosts,
     CreateGroup(String),
     DeleteGroup(String),
+    TestConnection(Box<HostForm>),
     // terminal
     TerminalInput(SessionId, Vec<u8>),
     TerminalResize(SessionId, u16, u16),

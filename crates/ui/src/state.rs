@@ -108,6 +108,15 @@ pub struct HostForm {
     pub group_id: String,
     pub proxy_jump_id: String,
     pub startup_command: String,
+    pub note: String,
+    pub connect_timeout: String,
+    pub keepalive_secs: String,
+    pub term_type: String,
+    pub default_path: String,
+    pub proxy_url: String,
+    pub env_vars: String,
+    pub keepalive_cmd: String,
+    pub keepalive_cmd_secs: String,
     pub tags: String,
     pub favorite: bool,
     /// New password (creates/updates a credential on save; empty = keep).
@@ -127,6 +136,8 @@ impl HostForm {
             port: "22".to_string(),
             username: "root".to_string(),
             auth_type: "password".to_string(),
+            term_type: "xterm-256color".to_string(),
+            keepalive_cmd_secs: "300".to_string(),
             ..Default::default()
         }
     }
@@ -175,6 +186,7 @@ pub struct UiState {
     pub focus_host_search: bool,
     pub selected_host: Option<String>,
     pub show_host_editor: bool,
+    pub host_editor_section: usize,
     pub host_form: HostForm,
     pub import_buffer: String,
     pub confirm: Option<ConfirmDialog>,
@@ -243,6 +255,7 @@ impl UiState {
             focus_host_search: false,
             selected_host: None,
             show_host_editor: false,
+            host_editor_section: 0,
             host_form: HostForm::blank(),
             import_buffer: String::new(),
             confirm: None,

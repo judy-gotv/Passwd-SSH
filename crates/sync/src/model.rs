@@ -112,6 +112,7 @@ impl SyncRecord {
 
 /// Decrypted entity variants.
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum SyncEntity {
     Host(Host),
     HostGroup(HostGroup),

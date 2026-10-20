@@ -58,6 +58,7 @@ enum AppMsg {
     },
     SessionList(Vec<SessionInfo>),
     Latencies(HashMap<String, Option<u32>>),
+    TestResult(Result<u32, String>),
     SftpListed {
         host_id: String,
         path: String,
@@ -252,6 +253,8 @@ pub struct OpsDeckApp {
     /// TCP connect latency cache (host id -> ms, None = unreachable).
     latencies: HashMap<String, Option<u32>>,
     ping_in_flight: bool,
+    /// Periodic keepalive-command tasks, keyed by host id.
+    keepalive_tasks: HashMap<String, tokio::task::AbortHandle>,
 }
 
 impl OpsDeckApp {
@@ -399,6 +402,7 @@ impl OpsDeckApp {
             session_views: Vec::new(),
             latencies: HashMap::new(),
             ping_in_flight: false,
+            keepalive_tasks: HashMap::new(),
         };
         app.refresh_cache().await;
         let _ = device_id(&app.storage).await; // ensure a stable device id exists
@@ -575,7 +579,53 @@ impl OpsDeckApp {
                     .find(|h| h.id == host_id)
                     .map(|h| h.name.clone())
                     .unwrap_or_else(|| "session".to_string());
+                let cmd_tx = shell.commands.clone();
                 self.shells.insert(session, shell);
+                // Init sequence: default path, then the startup command.
+                if let Some(host) = self.cached.hosts.iter().find(|h| h.id == host_id) {
+                    let mut init = String::new();
+                    if let Some(path) = host
+                        .default_path
+                        .as_deref()
+                        .filter(|p| !p.trim().is_empty())
+                    {
+                        init.push_str(&format!("cd {path}\n"));
+                    }
+                    if let Some(cmd) = host
+                        .startup_command
+                        .as_deref()
+                        .filter(|c| !c.trim().is_empty())
+                    {
+                        init.push_str(cmd.trim_end());
+                        init.push('\n');
+                    }
+                    if !init.is_empty() {
+                        let _ = cmd_tx.send(ShellCommand::Write(init.into_bytes()));
+                    }
+                    // Periodic keepalive command (exec channel, invisible).
+                    if let (Some(cmd), Some(secs)) = (
+                        host.keepalive_cmd.clone().filter(|c| !c.trim().is_empty()),
+                        host.keepalive_cmd_secs.filter(|s| *s > 0),
+                    ) {
+                        if let Some(old) = self.keepalive_tasks.remove(&host.id) {
+                            old.abort();
+                        }
+                        let ssh = self.ssh.clone();
+                        let handle = tokio::spawn(async move {
+                            let mut tick =
+                                tokio::time::interval(std::time::Duration::from_secs(secs as u64));
+                            tick.tick().await; // first run after one period
+                            loop {
+                                tick.tick().await;
+                                let _ = ssh
+                                    .exec_timeout(session, &cmd, std::time::Duration::from_secs(15))
+                                    .await;
+                            }
+                        })
+                        .abort_handle();
+                        self.keepalive_tasks.insert(host_id.clone(), handle);
+                    }
+                }
                 self.host_sessions.insert(host_id.clone(), session);
                 self.session_names.insert(session, name.clone());
                 // Link for SFTP.
@@ -667,6 +717,22 @@ impl OpsDeckApp {
                 self.ping_in_flight = false;
                 self.cache_dirty = true;
             }
+            AppMsg::TestResult(result) => match result {
+                Ok(ms) => {
+                    self.state.toast(
+                        self.state
+                            .tf("Connection OK ({ms} ms)", &[("ms", &ms.to_string())]),
+                        false,
+                    );
+                }
+                Err(e) => {
+                    self.state.toast(
+                        self.state
+                            .tf("Connection failed: {error}", &[("error", &e)]),
+                        true,
+                    );
+                }
+            },
             AppMsg::SftpListed {
                 host_id,
                 path,
@@ -947,6 +1013,11 @@ impl OpsDeckApp {
     fn disconnect_session(&mut self, session: SessionId) {
         if let Some(shell) = self.shells.remove(&session) {
             let _ = shell.commands.send(ShellCommand::Close);
+        }
+        if let Some((hid, _)) = self.host_sessions.iter().find(|(_, s)| **s == session)
+            && let Some(handle) = self.keepalive_tasks.remove(hid)
+        {
+            handle.abort();
         }
         let ssh = self.ssh.clone();
         let sftp = self.sftp.clone();
@@ -1272,6 +1343,7 @@ impl OpsDeckApp {
                 self.cache_dirty = true;
                 self.state.toast(self.state.t("Group created"), false);
             }
+            UiEvent::TestConnection(form) => self.test_connection(*form),
             UiEvent::DeleteGroup(id) => {
                 let storage = self.storage.clone();
                 let gid = id.clone();
@@ -1731,8 +1803,30 @@ impl OpsDeckApp {
             )
             .unwrap_or_else(|_| "[]".to_string());
 
+            let opt_note = opt_str(&form.note);
+            let opt_timeout = opt_num(&form.connect_timeout);
+            let opt_keepalive = opt_num(&form.keepalive_secs);
+            let opt_term = opt_str(&form.term_type);
+            let opt_path = opt_str(&form.default_path);
+            let opt_proxy = opt_str(&form.proxy_url);
+            let opt_env = env_json_from(&form.env_vars);
+            let opt_kcmd = opt_str(&form.keepalive_cmd);
+            let opt_ksecs = opt_num(&form.keepalive_cmd_secs);
+            let apply_opts = |host: &mut Host| {
+                host.note = opt_note.clone();
+                host.connect_timeout_secs = opt_timeout;
+                host.keepalive_secs = opt_keepalive;
+                host.term_type = opt_term.clone();
+                host.default_path = opt_path.clone();
+                host.proxy_url = opt_proxy.clone();
+                host.env_json = opt_env.clone();
+                host.keepalive_cmd = opt_kcmd.clone();
+                host.keepalive_cmd_secs = opt_ksecs;
+            };
+
             if let Some(id) = form.id {
                 if let Ok(mut host) = storage.hosts().get(&id).await {
+                    apply_opts(&mut host);
                     host.name = form.name;
                     host.host = form.host;
                     host.port = form.port.parse().unwrap_or(22);
@@ -1766,6 +1860,7 @@ impl OpsDeckApp {
                 }
             } else {
                 let mut host = Host::new(form.name, form.host, form.username);
+                apply_opts(&mut host);
                 host.port = form.port.parse().unwrap_or(22);
                 host.auth_type = form.auth_type;
                 host.group_id = if form.group_id.is_empty() {
@@ -1792,6 +1887,85 @@ impl OpsDeckApp {
         });
         self.cache_dirty = true;
         self.state.toast(self.state.t("Host saved"), false);
+    }
+
+    /// Test a connection from the host editor: dials, then disconnects.
+    fn test_connection(&mut self, form: opsdeck_ui::HostForm) {
+        let mut target = Host::new(form.name.clone(), form.host.clone(), form.username.clone());
+        target.port = form.port.parse().unwrap_or(22);
+        target.auth_type = form.auth_type.clone();
+        if !form.proxy_jump_id.is_empty() {
+            target.proxy_jump_id = Some(form.proxy_jump_id.clone());
+        }
+        apply_option_fields(&mut target, &form);
+        target.id = form
+            .id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+        let mut chain: Vec<HostConfig> = Vec::new();
+        let mut current = Some(target.clone());
+        let mut guard = 0;
+        while let Some(h) = current {
+            guard += 1;
+            if guard > 8 {
+                self.state.toast(self.state.t("Jump chain too deep"), true);
+                return;
+            }
+            match h.to_config() {
+                Ok(cfg) => chain.push(cfg),
+                Err(e) => {
+                    self.state.toast(
+                        self.state
+                            .tf("Bad host config: {e}", &[("e", &e.to_string())]),
+                        true,
+                    );
+                    return;
+                }
+            }
+            current = h
+                .proxy_jump_id
+                .as_deref()
+                .and_then(|jid| self.cached.hosts.iter().find(|x| x.id == jid).cloned());
+        }
+        chain.reverse();
+
+        let password = if !form.password.is_empty() {
+            Some(form.password.clone())
+        } else {
+            None
+        };
+        let (key_pem, passphrase) = if !form.private_key_pem.trim().is_empty() {
+            (
+                Some(form.private_key_pem.as_bytes().to_vec()),
+                if form.passphrase.is_empty() {
+                    None
+                } else {
+                    Some(form.passphrase.clone())
+                },
+            )
+        } else {
+            (None, None)
+        };
+        let creds = std::sync::Arc::new(FormCredentials {
+            password,
+            key_pem,
+            passphrase,
+            fallback: self.creds.clone(),
+        });
+        let ssh = self.ssh.clone();
+        let tx = self.msg_tx.clone();
+        self.state.toast(self.state.t("Testing connection…"), false);
+        tokio::spawn(async move {
+            let start = std::time::Instant::now();
+            let result = async {
+                let session = ssh.connect_chain(&chain, creds.as_ref()).await?;
+                let _ = ssh.disconnect(session).await;
+                Ok::<u32, SshError>(start.elapsed().as_millis() as u32)
+            }
+            .await;
+            let _ = tx.send(AppMsg::TestResult(result.map_err(|e| e.to_string())));
+        });
     }
 
     fn import_hosts(&mut self, json: &str) {
@@ -2043,6 +2217,88 @@ impl eframe::App for OpsDeckApp {
         {
             ctx.request_repaint();
         }
+    }
+}
+
+/// Trim-then-keep: empty string becomes None.
+fn opt_str(s: &str) -> Option<String> {
+    let t = s.trim();
+    if t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
+    }
+}
+
+/// Parse a non-negative integer option.
+fn opt_num(s: &str) -> Option<i64> {
+    s.trim().parse::<i64>().ok().filter(|v| *v >= 0)
+}
+
+/// Parse `KEY=value` lines into a JSON object; empty = None.
+fn env_json_from(text: &str) -> Option<String> {
+    let mut map = std::collections::BTreeMap::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((k, v)) = line.split_once('=') {
+            let k = k.trim();
+            if !k.is_empty() {
+                map.insert(k.to_string(), v.trim().to_string());
+            }
+        }
+    }
+    if map.is_empty() {
+        None
+    } else {
+        serde_json::to_string(&map).ok()
+    }
+}
+
+/// Fill the Xterminal-style option fields of a Host from an editor form.
+fn apply_option_fields(host: &mut Host, form: &opsdeck_ui::HostForm) {
+    host.note = opt_str(&form.note);
+    host.connect_timeout_secs = opt_num(&form.connect_timeout);
+    host.keepalive_secs = opt_num(&form.keepalive_secs);
+    host.term_type = opt_str(&form.term_type);
+    host.default_path = opt_str(&form.default_path);
+    host.proxy_url = opt_str(&form.proxy_url);
+    host.env_json = env_json_from(&form.env_vars);
+    host.keepalive_cmd = opt_str(&form.keepalive_cmd);
+    host.keepalive_cmd_secs = opt_num(&form.keepalive_cmd_secs);
+}
+
+/// CredentialProvider backed by the host editor's in-progress fields,
+/// falling back to stored vault credentials.
+struct FormCredentials {
+    password: Option<String>,
+    key_pem: Option<Vec<u8>>,
+    passphrase: Option<String>,
+    fallback: std::sync::Arc<AppCredentials>,
+}
+
+#[async_trait::async_trait]
+impl CredentialProvider for FormCredentials {
+    async fn password_for(&self, config: &HostConfig) -> Result<SecretString, SshError> {
+        if let Some(pw) = &self.password {
+            return Ok(SecretString::new(pw.clone()));
+        }
+        self.fallback.password_for(config).await
+    }
+
+    async fn private_key_for(
+        &self,
+        config: &HostConfig,
+    ) -> Result<(SecretBytes, Option<SecretString>), SshError> {
+        if let Some(pem) = &self.key_pem {
+            return Ok((
+                SecretBytes::new(pem.clone()),
+                self.passphrase.clone().map(SecretString::new),
+            ));
+        }
+        self.fallback.private_key_for(config).await
     }
 }
 

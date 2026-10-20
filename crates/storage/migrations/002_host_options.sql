@@ -1,0 +1,11 @@
+-- Host connection options (Xterminal-style editor fields).
+-- All nullable: NULL = built-in default.
+ALTER TABLE hosts ADD COLUMN note TEXT;
+ALTER TABLE hosts ADD COLUMN connect_timeout_secs INTEGER;
+ALTER TABLE hosts ADD COLUMN keepalive_secs INTEGER;
+ALTER TABLE hosts ADD COLUMN term_type TEXT;
+ALTER TABLE hosts ADD COLUMN default_path TEXT;
+ALTER TABLE hosts ADD COLUMN proxy_url TEXT;
+ALTER TABLE hosts ADD COLUMN env_json TEXT;
+ALTER TABLE hosts ADD COLUMN keepalive_cmd TEXT;
+ALTER TABLE hosts ADD COLUMN keepalive_cmd_secs INTEGER;
