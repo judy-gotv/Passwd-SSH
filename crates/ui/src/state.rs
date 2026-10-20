@@ -283,8 +283,16 @@ pub struct UiState {
     pub files_selected: std::collections::HashMap<String, (String, bool)>,
     /// Session file workspace: whether the upload-path row is open.
     pub files_upload_open: bool,
-    /// Remote file open in the built-in editor, if any.
-    pub file_editor: Option<FileEditor>,
+    /// Remote files open in the built-in editor (center tabs).
+    pub editors: Vec<FileEditor>,
+    /// Index into `editors` of the visible editor tab.
+    pub active_editor: Option<usize>,
+    /// Editor font size (points), adjustable from the editor toolbar.
+    pub editor_font_size: f32,
+    /// Whether the editor text field held keyboard focus last frame.
+    pub editor_focused: bool,
+    /// Upload target directory override (from a tree context menu).
+    pub files_upload_target: Option<String>,
     /// Pending one-line text prompt (rename / new folder / new file).
     pub text_prompt: Option<TextPrompt>,
     pub sftp_mkdir_open: bool,
@@ -367,7 +375,11 @@ impl UiState {
             files_expanded: HashMap::new(),
             files_selected: HashMap::new(),
             files_upload_open: false,
-            file_editor: None,
+            editors: Vec::new(),
+            active_editor: None,
+            editor_font_size: 13.0,
+            editor_focused: false,
+            files_upload_target: None,
             text_prompt: None,
             sftp_mkdir_open: false,
             sftp_new_dir_name: String::new(),

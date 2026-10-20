@@ -132,6 +132,11 @@ pub enum UiEvent {
         host_id: String,
         path: String,
     },
+    /// Ask the active shell of a host to cd into a directory.
+    TerminalCdHost {
+        host_id: String,
+        path: String,
+    },
     /// Write editor content back to the remote file.
     SftpSaveFile {
         host_id: String,
@@ -291,7 +296,7 @@ pub fn render(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mu
     views::main::status_bar(ui, state, data);
     views::dialogs::show_all(&ctx, state, data, events);
     views::vault::dialog(&ctx, state, data, events);
-    views::toasts::show(&ctx, state);
+    views::toasts::show(&ctx, state, data.theme);
 
     // Global shortcuts (not while a modal-ish dialog captures keys).
     if !state.show_vault_dialog && !state.show_host_editor {

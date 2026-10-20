@@ -87,6 +87,11 @@ enum AppMsg {
         path: String,
         result: Result<String, String>,
     },
+    SftpSaved {
+        host_id: String,
+        path: String,
+        result: Result<(), String>,
+    },
     BatchDone {
         results: Vec<(String, String)>,
     },
@@ -867,9 +872,11 @@ impl OpsDeckApp {
                 path,
                 result,
             } => {
-                if let Some(editor) = self.state.file_editor.as_mut()
-                    && editor.host_id == host_id
-                    && editor.path == path
+                if let Some(editor) = self
+                    .state
+                    .editors
+                    .iter_mut()
+                    .find(|e| e.host_id == host_id && e.path == path)
                 {
                     editor.loading = false;
                     match result {
@@ -892,49 +899,13 @@ impl OpsDeckApp {
                     "mkdir" => "Create directory",
                     "delete" => "Delete",
                     "rename" => "Rename",
-                    "save" => "Save",
                     _ => "File operation",
                 });
-                if what == "save" {
-                    match &result {
-                        Ok(()) => {
-                            // Saved: close the editor for this host.
-                            if self
-                                .state
-                                .file_editor
-                                .as_ref()
-                                .is_some_and(|e| e.host_id == host_id)
-                            {
-                                self.state.file_editor = None;
-                            }
-                        }
-                        Err(_) => {
-                            if let Some(e) = self.state.file_editor.as_mut() {
-                                e.saving = false;
-                            }
-                        }
-                    }
-                }
                 match result {
                     Ok(()) => {
                         self.state
                             .toast(self.state.tf("SFTP {op} done", &[("op", op)]), false);
-                        // Refresh every cached directory of this host so
-                        // tree views and the Files tab stay current.
-                        let paths: Vec<String> = self
-                            .sftp_listings
-                            .keys()
-                            .filter(|(h, _)| h == &host_id)
-                            .map(|(_, p)| p.clone())
-                            .collect();
-                        if paths.is_empty() {
-                            let path = self.state.sftp_path(&host_id);
-                            self.navigate_sftp(&host_id, &path);
-                        } else {
-                            for path in paths {
-                                self.navigate_sftp(&host_id, &path);
-                            }
-                        }
+                        self.refresh_sftp(&host_id);
                     }
                     Err(e) => self.state.toast(
                         self.state.tf(
@@ -943,6 +914,42 @@ impl OpsDeckApp {
                         ),
                         true,
                     ),
+                }
+            }
+            AppMsg::SftpSaved {
+                host_id,
+                path,
+                result,
+            } => {
+                let editor = self
+                    .state
+                    .editors
+                    .iter_mut()
+                    .find(|e| e.host_id == host_id && e.path == path);
+                match result {
+                    Ok(()) => {
+                        if let Some(editor) = editor {
+                            editor.original = editor.content.clone();
+                            editor.saving = false;
+                            editor.error = None;
+                        }
+                        let op = self.state.t("Save");
+                        self.state
+                            .toast(self.state.tf("SFTP {op} done", &[("op", op)]), false);
+                        self.refresh_sftp(&host_id);
+                    }
+                    Err(e) => {
+                        if let Some(editor) = editor {
+                            editor.saving = false;
+                            editor.error = Some(e.clone());
+                        }
+                        let op = self.state.t("Save");
+                        self.state.toast(
+                            self.state
+                                .tf("SFTP {op} failed: {e}", &[("op", op), ("e", &e)]),
+                            true,
+                        );
+                    }
                 }
             }
             AppMsg::BatchDone { results } => {
@@ -1346,6 +1353,24 @@ impl OpsDeckApp {
         self.host_sessions.retain(|_, s| *s != session);
         self.session_names.remove(&session);
         self.state.drop_terminal(session);
+    }
+
+    /// Re-list every cached directory of a host (after a mutation).
+    fn refresh_sftp(&mut self, host_id: &str) {
+        let paths: Vec<String> = self
+            .sftp_listings
+            .keys()
+            .filter(|(h, _)| h == host_id)
+            .map(|(_, p)| p.clone())
+            .collect();
+        if paths.is_empty() {
+            let path = self.state.sftp_path(host_id);
+            self.navigate_sftp(host_id, &path);
+        } else {
+            for path in paths {
+                self.navigate_sftp(host_id, &path);
+            }
+        }
     }
 
     fn navigate_sftp(&mut self, host_id: &str, path: &str) {
@@ -1902,7 +1927,12 @@ impl OpsDeckApp {
                         .state
                         .t("Connect the host first (Terminal tab)")
                         .to_string();
-                    if let Some(e) = self.state.file_editor.as_mut() {
+                    if let Some(e) = self
+                        .state
+                        .editors
+                        .iter_mut()
+                        .find(|e| e.host_id == host_id && e.path == path)
+                    {
                         e.loading = false;
                         e.error = Some(msg);
                     }
@@ -1921,10 +1951,10 @@ impl OpsDeckApp {
                             .write_file(session, &path, content.as_bytes())
                             .await
                             .map_err(|e| e.to_string());
-                        let _ = tx.send(AppMsg::SftpOpDone {
+                        let _ = tx.send(AppMsg::SftpSaved {
                             host_id,
+                            path,
                             result,
-                            what: "save".to_string(),
                         });
                     });
                 } else {
@@ -1932,10 +1962,28 @@ impl OpsDeckApp {
                         .state
                         .t("Connect the host first (Terminal tab)")
                         .to_string();
-                    if let Some(e) = self.state.file_editor.as_mut() {
+                    if let Some(e) = self
+                        .state
+                        .editors
+                        .iter_mut()
+                        .find(|e| e.host_id == host_id && e.path == path)
+                    {
                         e.saving = false;
                         e.error = Some(msg);
                     }
+                }
+            }
+            UiEvent::TerminalCdHost { host_id, path } => {
+                if let Some(session) = self.host_sessions.get(&host_id).cloned()
+                    && let Some(shell) = self.shells.get(&session)
+                {
+                    let quoted = path.replace('\'', "'\\''");
+                    let _ = shell.commands.send(ShellCommand::Write(
+                        format!("cd -- '{quoted}'\n").into_bytes(),
+                    ));
+                } else {
+                    self.state
+                        .toast(self.state.t("Session has no open shell"), true);
                 }
             }
             UiEvent::TransferPause(id) => {

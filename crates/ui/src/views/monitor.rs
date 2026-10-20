@@ -71,10 +71,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
 
         let latest = &snapshots[snapshots.len() - 1];
 
-        // Summary cards
+        // Summary cards (equal widths across the row)
+        let card_w = (ui.available_width() - 3.0 * ui.spacing().item_spacing.x) / 4.0;
         ui.horizontal(|ui| {
             stat_card(
                 ui,
+                card_w,
                 state.t("CPU"),
                 latest
                     .cpu_percent
@@ -85,14 +87,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 (Some(u), Some(t)) if t > 0 => format!("{:.1}%", u as f64 / t as f64 * 100.0),
                 _ => "—".to_string(),
             };
-            stat_card(ui, state.t("Memory"), mem);
+            stat_card(ui, card_w, state.t("Memory"), mem);
             let disk = match (latest.disk_used_bytes, latest.disk_total_bytes) {
                 (Some(u), Some(t)) if t > 0 => format!("{:.1}%", u as f64 / t as f64 * 100.0),
                 _ => "—".to_string(),
             };
-            stat_card(ui, state.t("Disk /"), disk);
+            stat_card(ui, card_w, state.t("Disk /"), disk);
             stat_card(
                 ui,
+                card_w,
                 state.t("Load"),
                 latest
                     .load_1
@@ -102,9 +105,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
         });
         ui.add_space(8.0);
 
-        // Charts
+        // Charts (two columns filling the row)
+        let chart_w = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
+                ui.set_width(chart_w);
                 ui.label(state.t("CPU %"));
                 let vals: Vec<f32> = snapshots
                     .iter()
@@ -113,6 +118,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 line_chart(ui, &vals, Color32::from_rgb(78, 193, 255), 0.0, 100.0);
             });
             ui.vertical(|ui| {
+                ui.set_width(chart_w);
                 ui.label(state.t("Memory %"));
                 let vals: Vec<f32> = snapshots
                     .iter()
@@ -153,13 +159,19 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
     });
 }
 
-fn stat_card(ui: &mut egui::Ui, title: &str, value: String) {
+fn stat_card(ui: &mut egui::Ui, width: f32, title: &str, value: String) {
+    // Theme-driven surface: light card in light themes, raised dark card
+    // in dark themes — never a hardcoded black box.
+    let fill = ui.visuals().widgets.noninteractive.bg_fill;
+    let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
     egui::Frame::NONE
-        .fill(Color32::from_rgb(37, 37, 38))
+        .fill(fill)
+        .stroke(stroke)
         .corner_radius(6.0)
         .inner_margin(10.0)
         .show(ui, |ui| {
             ui.vertical(|ui| {
+                ui.set_min_width((width - 22.0).max(40.0));
                 ui.label(egui::RichText::new(title).small().weak());
                 ui.label(egui::RichText::new(value).size(20.0).strong());
             });
@@ -168,12 +180,31 @@ fn stat_card(ui: &mut egui::Ui, title: &str, value: String) {
 
 /// Simple filled line chart.
 fn line_chart(ui: &mut egui::Ui, values: &[f32], color: Color32, min: f32, max: f32) {
-    let (rect, _resp) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width().min(420.0), 120.0),
-        egui::Sense::hover(),
-    );
+    let (rect, _resp) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 120.0), egui::Sense::hover());
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 4.0, Color32::from_rgb(24, 24, 24));
+    let bg = ui.visuals().extreme_bg_color;
+    painter.rect_filled(rect, 4.0, bg);
+    painter.rect_stroke(
+        rect,
+        4.0,
+        Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color),
+        egui::StrokeKind::Inside,
+    );
+    // Faint horizontal grid lines at 25/50/75%.
+    let grid = Color32::from_rgba_unmultiplied(
+        ui.visuals().text_color().r(),
+        ui.visuals().text_color().g(),
+        ui.visuals().text_color().b(),
+        28,
+    );
+    for q in 1..4 {
+        let y = rect.top() + rect.height() * q as f32 / 4.0;
+        painter.line_segment(
+            [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
+            Stroke::new(1.0, grid),
+        );
+    }
     if values.len() < 2 {
         return;
     }

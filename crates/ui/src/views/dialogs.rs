@@ -110,7 +110,7 @@ fn host_editor(ctx: &egui::Context, state: &mut UiState, data: &UiData, events: 
         state.t("Edit host")
     })
     .collapsible(false)
-    .resizable(true)
+    .auto_sized()
     .default_width(660.0)
     // Never taller than the screen: the action bar must stay reachable.
     .max_height((ctx.content_rect().height() - 16.0).max(320.0))
@@ -606,6 +606,7 @@ fn dispatch_confirm_action(state: &mut UiState, events: &mut Vec<UiEvent>, actio
                 events.push(UiEvent::DeleteGroup(id.to_string()));
             }
         }
+        "noop" => {}
         "delete_credential" => {
             if let Some(id) = parts.next() {
                 events.push(UiEvent::DeleteCredential(id.to_string()));

@@ -174,7 +174,20 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
         // ui.horizontal/ui.vertical: in egui 0.37 those start out one
         // interact-row tall/wide, so available_height() collapses to
         // ~30px and the terminal shrinks to a strip (the v0.2.x bug).
-        let full = ui.available_rect_before_wrap();
+        let full0 = ui.available_rect_before_wrap();
+        // Editor tabs (Xterminal layout): editor on top, terminal below.
+        let (editor_rect, full) = if state.editors.is_empty() {
+            (None, full0)
+        } else {
+            let eh = (full0.height() * 0.52).clamp(220.0, (full0.height() - 200.0).max(220.0));
+            (
+                Some(Rect::from_min_size(full0.min, Vec2::new(full0.width(), eh))),
+                Rect::from_min_max(Pos2::new(full0.left(), full0.top() + eh + 4.0), full0.max),
+            )
+        };
+        if let Some(er) = editor_rect {
+            super::filespanel::editor_area(ui, state, events, er);
+        }
         let gap = if pane_count > 1 { 4.0 } else { 0.0 };
         for pane_idx in 0..pane_count {
             let (session, title) = {
