@@ -57,6 +57,7 @@ enum AppMsg {
         shell: ShellChannel,
     },
     SessionList(Vec<SessionInfo>),
+    Latencies(HashMap<String, Option<u32>>),
     SftpListed {
         host_id: String,
         path: String,
@@ -248,6 +249,9 @@ pub struct OpsDeckApp {
     recently_closed: HashMap<SessionId, (SessionInfo, Instant)>,
     /// sessions + recently_closed, rebuilt each frame for UiData.
     session_views: Vec<SessionInfo>,
+    /// TCP connect latency cache (host id -> ms, None = unreachable).
+    latencies: HashMap<String, Option<u32>>,
+    ping_in_flight: bool,
 }
 
 impl OpsDeckApp {
@@ -393,6 +397,8 @@ impl OpsDeckApp {
             activity: false,
             recently_closed: HashMap::new(),
             session_views: Vec::new(),
+            latencies: HashMap::new(),
+            ping_in_flight: false,
         };
         app.refresh_cache().await;
         let _ = device_id(&app.storage).await; // ensure a stable device id exists
@@ -656,6 +662,11 @@ impl OpsDeckApp {
             AppMsg::SessionList(list) => {
                 self.sessions = list;
             }
+            AppMsg::Latencies(map) => {
+                self.latencies = map;
+                self.ping_in_flight = false;
+                self.cache_dirty = true;
+            }
             AppMsg::SftpListed {
                 host_id,
                 path,
@@ -890,6 +901,46 @@ impl OpsDeckApp {
                     });
                 }
             }
+        });
+    }
+
+    /// Measure TCP connect latency for every known host (concurrent).
+    fn spawn_ping(&mut self) {
+        if self.ping_in_flight {
+            return;
+        }
+        self.ping_in_flight = true;
+        let hosts: Vec<(String, String, u16)> = self
+            .cached
+            .hosts
+            .iter()
+            .map(|h| (h.id.clone(), h.host.clone(), h.port as u16))
+            .collect();
+        let tx = self.msg_tx.clone();
+        tokio::spawn(async move {
+            let mut set = tokio::task::JoinSet::new();
+            for (id, host, port) in hosts {
+                set.spawn(async move {
+                    let start = std::time::Instant::now();
+                    let res = tokio::time::timeout(
+                        std::time::Duration::from_millis(2500),
+                        tokio::net::TcpStream::connect((host.as_str(), port)),
+                    )
+                    .await;
+                    let ms = match res {
+                        Ok(Ok(_stream)) => Some(start.elapsed().as_millis() as u32),
+                        _ => None,
+                    };
+                    (id, ms)
+                });
+            }
+            let mut out: HashMap<String, Option<u32>> = HashMap::new();
+            while let Some(joined) = set.join_next().await {
+                if let Ok((id, ms)) = joined {
+                    out.insert(id, ms);
+                }
+            }
+            let _ = tx.send(AppMsg::Latencies(out));
         });
     }
 
@@ -1205,6 +1256,34 @@ impl OpsDeckApp {
             }
             UiEvent::ImportHosts(json) => self.import_hosts(&json),
             UiEvent::ExportHosts => self.export_hosts(),
+            UiEvent::PingHosts => self.spawn_ping(),
+            UiEvent::CreateGroup(name) => {
+                let storage = self.storage.clone();
+                tokio::spawn(async move {
+                    let group = opsdeck_storage::models::HostGroup {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        name,
+                        parent_id: None,
+                        sort_order: 0,
+                        created_at: now_unix(),
+                    };
+                    let _ = storage.groups().create(&group).await;
+                });
+                self.cache_dirty = true;
+                self.state.toast(self.state.t("Group created"), false);
+            }
+            UiEvent::DeleteGroup(id) => {
+                let storage = self.storage.clone();
+                let gid = id.clone();
+                tokio::spawn(async move {
+                    let _ = storage.groups().delete(&gid).await;
+                });
+                self.cache_dirty = true;
+                if self.state.group_filter == opsdeck_ui::GroupFilter::Group(id) {
+                    self.state.group_filter = opsdeck_ui::GroupFilter::All;
+                }
+                self.state.toast(self.state.t("Group deleted"), false);
+            }
 
             // -- terminal ---------------------------------------------------
             UiEvent::TerminalInput(session, bytes) => {
@@ -1902,6 +1981,17 @@ impl eframe::App for OpsDeckApp {
             }
         }
 
+        // Measure latencies for any host we have not probed yet.
+        if !self.ping_in_flight
+            && self
+                .cached
+                .hosts
+                .iter()
+                .any(|h| !self.latencies.contains_key(&h.id))
+        {
+            self.spawn_ping();
+        }
+
         // Build UiData. Prompts and forwards need owned scratch vecs that live
         // for the whole render call.
         let prompt_views: Vec<KeyPromptView> = self
@@ -1935,6 +2025,7 @@ impl eframe::App for OpsDeckApp {
             update: &self.update_view,
             sync: &self.sync_view,
             theme: &self.theme,
+            latencies: &self.latencies,
         };
 
         let mut events = Vec::new();

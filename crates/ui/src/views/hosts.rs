@@ -1,11 +1,11 @@
-//! Left panel: host search, groups, host list, connect actions.
+//! Left panel: search, group tree (Xterminal style), sessions.
 //! Author: Passwd Word
 
 use opsdeck_ssh::SessionState;
 
-use crate::{HostForm, MainTab, UiData, UiEvent, UiState};
+use crate::{GroupFilter, HostForm, MainTab, UiData, UiEvent, UiState};
 
-/// Draw the left host panel.
+/// Draw the left panel: search + actions + group tree + sessions.
 pub fn left_panel(
     ui: &mut egui::Ui,
     state: &mut UiState,
@@ -52,73 +52,97 @@ pub fn left_panel(
                     events.push(UiEvent::ExportHosts);
                 }
             });
-            ui.add_space(4.0);
-            ui.separator();
+            ui.add_space(6.0);
 
-            // Favorites
-            let query = state.host_search.to_lowercase();
-            let favorites: Vec<_> = data
-                .hosts
-                .iter()
-                .filter(|h| h.favorite && matches_query(h, &query))
-                .collect();
-            if !favorites.is_empty() {
-                ui.label(egui::RichText::new(state.t("★ Favorites")).small().weak());
-                for host in favorites {
-                    host_row(ui, state, data, events, host);
-                }
-                ui.separator();
+            // Group tree ------------------------------------------------------
+            ui.label(egui::RichText::new(state.t("Groups")).small().weak());
+            ui.add_space(2.0);
+
+            let total = data.hosts.len();
+            if tree_row(
+                ui,
+                "🗂",
+                state.t("All hosts"),
+                total,
+                state.group_filter == GroupFilter::All,
+            ) {
+                state.group_filter = GroupFilter::All;
+                state.main_tab = MainTab::Manager;
             }
+            let fav_count = data.hosts.iter().filter(|h| h.favorite).count();
+            if tree_row(
+                ui,
+                "★",
+                state.t("★ Favorites"),
+                fav_count,
+                state.group_filter == GroupFilter::Favorites,
+            ) {
+                state.group_filter = GroupFilter::Favorites;
+                state.main_tab = MainTab::Manager;
+            }
+            ui.add_space(4.0);
 
-            // Groups
-            let ungrouped: Vec<_> = data
-                .hosts
-                .iter()
-                .filter(|h| h.group_id.is_none() && matches_query(h, &query))
-                .collect();
             for group in data.groups {
-                let members: Vec<_> = data
+                let count = data
                     .hosts
                     .iter()
-                    .filter(|h| {
-                        h.group_id.as_deref() == Some(group.id.as_str()) && matches_query(h, &query)
-                    })
-                    .collect();
-                if members.is_empty() && !query.is_empty() {
-                    continue;
-                }
-                let header = egui::CollapsingHeader::new(&group.name)
-                    .default_open(true)
-                    .show(ui, |ui| {
-                        for host in members {
-                            host_row(ui, state, data, events, host);
-                        }
+                    .filter(|h| h.group_id.as_deref() == Some(group.id.as_str()))
+                    .count();
+                let selected = state.group_filter == GroupFilter::Group(group.id.clone());
+                let mut delete = false;
+                ui.horizontal(|ui| {
+                    if tree_row(ui, "📁", &group.name, count, selected) {
+                        state.group_filter = GroupFilter::Group(group.id.clone());
+                        state.main_tab = MainTab::Manager;
+                    }
+                    if ui
+                        .small_button("🗑")
+                        .on_hover_text(state.t("Delete"))
+                        .clicked()
+                    {
+                        delete = true;
+                    }
+                });
+                if delete {
+                    state.confirm = Some(crate::ConfirmDialog {
+                        title: state.t("Delete group").to_string(),
+                        message: state.tf("Delete group “{name}”?", &[("name", &group.name)]),
+                        confirm_label: state.t("Delete").to_string(),
+                        action: format!("delete_group:{}", group.id),
                     });
-                let _ = header;
-            }
-            if !ungrouped.is_empty() {
-                if !data.groups.is_empty() {
-                    ui.label(egui::RichText::new(state.t("Ungrouped")).small().weak());
-                }
-                for host in ungrouped {
-                    host_row(ui, state, data, events, host);
                 }
             }
 
-            if data.hosts.is_empty() {
-                ui.add_space(12.0);
-                ui.label(egui::RichText::new(state.t("No hosts yet.")).weak());
-                ui.label(
-                    egui::RichText::new(state.t("Click “＋ Add” to add your first server."))
-                        .small()
-                        .weak(),
+            // New group inline
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                let hint = state.t("New group");
+                let resp = ui.add(
+                    egui::TextEdit::singleline(&mut state.new_group_name)
+                        .hint_text(hint)
+                        .desired_width(160.0),
                 );
-            }
+                if ui.small_button("＋").clicked() && !state.new_group_name.trim().is_empty() {
+                    events.push(UiEvent::CreateGroup(
+                        state.new_group_name.trim().to_string(),
+                    ));
+                    state.new_group_name.clear();
+                }
+                if resp.lost_focus()
+                    && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                    && !state.new_group_name.trim().is_empty()
+                {
+                    events.push(UiEvent::CreateGroup(
+                        state.new_group_name.trim().to_string(),
+                    ));
+                    state.new_group_name.clear();
+                }
+            });
 
             ui.add_space(8.0);
             ui.separator();
 
-            // Sessions
+            // Sessions ---------------------------------------------------------
             if !data.sessions.is_empty() {
                 ui.label(egui::RichText::new(state.t("Sessions")).small().weak());
                 for session in data.sessions {
@@ -160,115 +184,16 @@ pub fn left_panel(
         });
 }
 
-fn matches_query(host: &opsdeck_storage::models::Host, query: &str) -> bool {
-    if query.is_empty() {
-        return true;
-    }
-    host.name.to_lowercase().contains(query)
-        || host.host.to_lowercase().contains(query)
-        || host.username.to_lowercase().contains(query)
-        || host
-            .tag_list()
-            .iter()
-            .any(|t| t.to_lowercase().contains(query))
+/// One selectable tree row. Returns true when clicked.
+fn tree_row(ui: &mut egui::Ui, icon: &str, label: &str, count: usize, selected: bool) -> bool {
+    ui.selectable_label(
+        selected,
+        egui::RichText::new(format!("{icon} {label} ({count})")).strong(),
+    )
+    .clicked()
 }
 
-/// One host row: status dot, name, address, connect + context buttons.
-fn host_row(
-    ui: &mut egui::Ui,
-    state: &mut UiState,
-    data: &UiData,
-    events: &mut Vec<UiEvent>,
-    host: &opsdeck_storage::models::Host,
-) {
-    let selected = state.selected_host.as_deref() == Some(host.id.as_str());
-    let connecting = data.connecting.contains_key(&host.id);
-
-    ui.horizontal(|ui| {
-        // Favorite star
-        let star = if host.favorite { "★" } else { "☆" };
-        if ui
-            .small_button(star)
-            .on_hover_text(state.t("Toggle favorite"))
-            .clicked()
-        {
-            events.push(UiEvent::ToggleFavorite(host.id.clone()));
-        }
-
-        let resp = ui.selectable_label(selected, egui::RichText::new(&host.name).strong());
-        if resp.clicked() {
-            state.selected_host = Some(host.id.clone());
-        }
-        if resp.double_clicked() && !connecting {
-            events.push(UiEvent::ConnectHost(host.id.clone()));
-        }
-        resp.on_hover_text(state.tf(
-            "{user}@{host}:{port}\nDouble-click to connect",
-            &[
-                ("user", &host.username),
-                ("host", &host.host),
-                ("port", &host.port.to_string()),
-            ],
-        ));
-
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if connecting {
-                ui.spinner();
-            } else if ui
-                .small_button("▶")
-                .on_hover_text(state.t("Connect"))
-                .clicked()
-            {
-                events.push(UiEvent::ConnectHost(host.id.clone()));
-            }
-            if ui
-                .small_button("✎")
-                .on_hover_text(state.t("Edit"))
-                .clicked()
-            {
-                state.host_form = host_form_from(host, data);
-                state.show_host_editor = true;
-            }
-            if ui
-                .small_button("🗑")
-                .on_hover_text(state.t("Delete"))
-                .clicked()
-            {
-                state.confirm = Some(crate::ConfirmDialog {
-                    title: state.t("Delete host").to_string(),
-                    message: state.tf("Delete host “{name}”?", &[("name", &host.name)]),
-                    confirm_label: state.t("Delete").to_string(),
-                    action: format!("delete_host:{}", host.id),
-                });
-            }
-        });
-    });
-
-    // Quick actions under the selected host.
-    if selected {
-        ui.horizontal(|ui| {
-            ui.add_space(18.0);
-            if ui.small_button(state.t("Terminal")).clicked() {
-                state.main_tab = MainTab::Terminal;
-                events.push(UiEvent::ConnectHost(host.id.clone()));
-            }
-            if ui.small_button(state.t("Files")).clicked() {
-                state.main_tab = MainTab::Files;
-                state.sftp_host = Some(host.id.clone());
-                events.push(UiEvent::SftpNavigate {
-                    host_id: host.id.clone(),
-                    path: state.sftp_path(&host.id),
-                });
-            }
-            if ui.small_button(state.t("Monitor")).clicked() {
-                state.main_tab = MainTab::Monitor;
-                events.push(UiEvent::MonitorSelect(host.id.clone()));
-            }
-        });
-    }
-}
-
-fn host_form_from(host: &opsdeck_storage::models::Host, data: &UiData) -> HostForm {
+pub(crate) fn host_form_from(host: &opsdeck_storage::models::Host, data: &UiData) -> HostForm {
     let _ = data;
     HostForm {
         id: Some(host.id.clone()),

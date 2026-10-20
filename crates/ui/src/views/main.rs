@@ -41,6 +41,7 @@ pub fn top_bar(ui: &mut egui::Ui, state: &mut UiState, events: &mut Vec<UiEvent>
 
             ui.menu_button(state.t("View"), |ui| {
                 for (tab, label) in [
+                    (MainTab::Manager, state.t("Hosts")),
                     (MainTab::Terminal, state.t("Terminal")),
                     (MainTab::Files, state.t("Files (SFTP)")),
                     (MainTab::Monitor, state.t("Monitor")),
@@ -109,6 +110,7 @@ pub fn top_bar(ui: &mut egui::Ui, state: &mut UiState, events: &mut Vec<UiEvent>
             // Right side: tab switcher
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 for (tab, label) in [
+                    (MainTab::Manager, state.t("Hosts")),
                     (MainTab::Terminal, state.t("Terminal")),
                     (MainTab::Files, state.t("Files")),
                     (MainTab::Monitor, state.t("Monitor")),
@@ -127,6 +129,7 @@ pub fn top_bar(ui: &mut egui::Ui, state: &mut UiState, events: &mut Vec<UiEvent>
 /// Central content dispatch.
 pub fn central(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
     match state.main_tab {
+        MainTab::Manager => super::manager::show(ui, state, data, events),
         MainTab::Terminal => super::terminal::show(ui, state, data, events),
         MainTab::Files => super::sftp::show(ui, state, data, events),
         MainTab::Monitor => super::monitor::show(ui, state, data, events),

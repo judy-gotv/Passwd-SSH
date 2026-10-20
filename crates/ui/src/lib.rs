@@ -25,7 +25,8 @@ pub mod views;
 pub use i18n::Language;
 
 pub use state::{
-    ConfirmDialog, HostForm, MainTab, Pane, Screen, Selection, SnippetForm, TermTab, Toast, UiState,
+    ConfirmDialog, GroupFilter, HostForm, MainTab, Pane, Screen, Selection, SnippetForm, TermTab,
+    Toast, UiState,
 };
 pub use theme::Theme;
 
@@ -49,6 +50,9 @@ pub enum UiEvent {
     ToggleFavorite(String),
     ImportHosts(String),
     ExportHosts,
+    PingHosts,
+    CreateGroup(String),
+    DeleteGroup(String),
     // terminal
     TerminalInput(SessionId, Vec<u8>),
     TerminalResize(SessionId, u16, u16),
@@ -195,6 +199,9 @@ pub struct UiData<'a> {
     pub update: &'a UpdateStatusView,
     pub sync: &'a SyncStatusView,
     pub theme: &'a Theme,
+    /// TCP connect latency per host id: Some(ms) or None (timeout/refused).
+    /// Missing key = not measured yet.
+    pub latencies: &'a HashMap<String, Option<u32>>,
 }
 
 impl<'a> UiData<'a> {

@@ -27,11 +27,24 @@ pub enum Screen {
 /// Main content tabs (docs §8.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MainTab {
+    /// Connection manager (Xterminal-style): group tree + host table.
+    Manager,
     Terminal,
     Files,
     Monitor,
     Snippets,
     Settings,
+}
+
+/// Group-tree filter for the manager host table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GroupFilter {
+    /// Every host.
+    All,
+    /// Starred hosts.
+    Favorites,
+    /// Hosts of one group id.
+    Group(String),
 }
 
 /// One terminal pane: a live shell session.
@@ -156,6 +169,8 @@ pub struct UiState {
     pub unlock_error: Option<String>,
     // main
     pub main_tab: MainTab,
+    pub group_filter: GroupFilter,
+    pub new_group_name: String,
     pub host_search: String,
     pub focus_host_search: bool,
     pub selected_host: Option<String>,
@@ -221,7 +236,9 @@ impl UiState {
             password_input: String::new(),
             password_confirm: String::new(),
             unlock_error: None,
-            main_tab: MainTab::Terminal,
+            main_tab: MainTab::Manager,
+            group_filter: GroupFilter::All,
+            new_group_name: String::new(),
             host_search: String::new(),
             focus_host_search: false,
             selected_host: None,

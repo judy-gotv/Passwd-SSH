@@ -403,6 +403,11 @@ fn dispatch_confirm_action(state: &mut UiState, events: &mut Vec<UiEvent>, actio
                 events.push(UiEvent::DeleteHost(id.to_string()));
             }
         }
+        "delete_group" => {
+            if let Some(id) = parts.next() {
+                events.push(UiEvent::DeleteGroup(id.to_string()));
+            }
+        }
         "delete_snippet" => {
             if let Some(id) = parts.next() {
                 events.push(UiEvent::DeleteSnippet(id.to_string()));
