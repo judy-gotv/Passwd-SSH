@@ -273,7 +273,9 @@ fn search_bar(
                                 .hint_text(hint)
                                 .desired_width(200.0),
                         );
-                        resp.request_focus();
+                        if !resp.has_focus() {
+                            resp.request_focus();
+                        }
                         let hits = state
                             .terminals
                             .get(&session)

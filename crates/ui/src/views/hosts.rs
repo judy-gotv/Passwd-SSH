@@ -186,27 +186,22 @@ pub fn left_panel(
                     }
                 });
                 if expanded {
-                    for host in scoped_hosts
+                    let leaves: Vec<_> = scoped_hosts
                         .iter()
                         .filter(|h| h.group_id.as_deref() == Some(group.id.as_str()))
-                    {
-                        ui.horizontal(|ui| {
-                            ui.add_space(34.0);
-                            let is_sel = state.selected_host.as_deref() == Some(host.id.as_str());
-                            let mut text = egui::RichText::new(&host.name).small();
-                            if is_sel {
-                                text = text.strong();
-                            }
-                            let resp = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
-                            if resp.clicked() {
-                                state.selected_host = Some(host.id.clone());
-                                state.group_filter = GroupFilter::Group(group.id.clone());
-                                state.main_tab = MainTab::Manager;
-                            }
-                            if resp.double_clicked() {
-                                events.push(UiEvent::ConnectHost(host.id.clone()));
-                            }
-                        });
+                        .collect();
+                    let last = leaves.len().saturating_sub(1);
+                    for (i, host) in leaves.iter().enumerate() {
+                        let is_sel = state.selected_host.as_deref() == Some(host.id.as_str());
+                        let resp = leaf_row(ui, &host.name, is_sel, i == last);
+                        if resp.clicked() {
+                            state.selected_host = Some(host.id.clone());
+                            state.group_filter = GroupFilter::Group(group.id.clone());
+                            state.main_tab = MainTab::Manager;
+                        }
+                        if resp.double_clicked() {
+                            events.push(UiEvent::ConnectHost(host.id.clone()));
+                        }
                     }
                 }
                 if delete {
@@ -400,7 +395,7 @@ pub fn group_dialog(
     let mut confirm = false;
     egui::Window::new(state.t("Create group"))
         .collapsible(false)
-        .resizable(false)
+        .auto_sized()
         .default_width(400.0)
         .open(&mut open)
         .show(ctx, |ui| {
@@ -412,7 +407,9 @@ pub fn group_dialog(
                         .hint_text(hint)
                         .desired_width(300.0),
                 );
-                resp.request_focus();
+                if !resp.has_focus() {
+                    resp.request_focus();
+                }
                 if resp.lost_focus()
                     && ui.input(|i| i.key_pressed(egui::Key::Enter))
                     && !state.new_group_name.trim().is_empty()
@@ -540,6 +537,17 @@ fn group_row(
         text_color,
         egui::Stroke::NONE,
     ));
+    if expanded {
+        // Tree guide line leaving the group row downwards.
+        let line_color = visuals.weak_text_color().gamma_multiply(0.4);
+        painter.line_segment(
+            [
+                egui::pos2(rect.left() + 10.0, rect.bottom() - 3.0),
+                egui::pos2(rect.left() + 10.0, rect.bottom()),
+            ],
+            egui::Stroke::new(1.0, line_color),
+        );
+    }
     let mut x = rect.left() + 20.0;
     if let Some(color) = color {
         painter.circle_filled(egui::pos2(x + 4.0, cy), 4.0, color);
@@ -552,5 +560,52 @@ fn group_row(
         egui::FontId::proportional(13.0),
         text_color,
     );
+    resp
+}
+
+/// One host leaf under an expanded group, with the tree guide lines the
+/// reference draws: a vertical line under the group's chevron (full row
+/// height, stopping at the middle for the last leaf) and a horizontal
+/// stub into the leaf text.
+fn leaf_row(ui: &mut egui::Ui, name: &str, selected: bool, is_last: bool) -> egui::Response {
+    let height = 21.0;
+    let width = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
+    let painter = ui.painter_at(rect);
+    let visuals = ui.visuals();
+    if resp.hovered() && !selected {
+        painter.rect_filled(rect, 3.0, visuals.widgets.hovered.bg_fill);
+    }
+    let cy = rect.center().y;
+    let gx = rect.left() + 10.0;
+    let line_color = visuals.weak_text_color().gamma_multiply(0.4);
+    let line_end = if is_last { cy } else { rect.bottom() };
+    painter.line_segment(
+        [egui::pos2(gx, rect.top()), egui::pos2(gx, line_end)],
+        egui::Stroke::new(1.0, line_color),
+    );
+    painter.line_segment(
+        [egui::pos2(gx, cy), egui::pos2(rect.left() + 27.0, cy)],
+        egui::Stroke::new(1.0, line_color),
+    );
+    let text_color = visuals.text_color();
+    let font = egui::FontId::proportional(12.5);
+    painter.text(
+        egui::pos2(rect.left() + 34.0, cy),
+        egui::Align2::LEFT_CENTER,
+        name,
+        font,
+        text_color,
+    );
+    if selected {
+        // Selected leaf: bold overlay text (plain row, no pill).
+        painter.text(
+            egui::pos2(rect.left() + 34.0, cy),
+            egui::Align2::LEFT_CENTER,
+            name,
+            egui::FontId::proportional(12.5),
+            text_color,
+        );
+    }
     resp
 }
