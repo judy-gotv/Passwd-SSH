@@ -302,10 +302,11 @@ pub fn render(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mu
     views::main::status_bar(ui, state, data);
     views::dialogs::show_all(&ctx, state, data, events);
     views::vault::dialog(&ctx, state, data, events);
+    views::hosts::group_dialog(&ctx, state, data, events);
     views::toasts::show(&ctx, state, data.theme);
 
     // Global shortcuts (not while a modal-ish dialog captures keys).
-    if !state.show_vault_dialog && !state.show_host_editor {
+    if !state.show_vault_dialog && !state.show_host_editor && !state.group_dialog_open {
         views::main::global_shortcuts(&ctx, state, events);
     }
 }

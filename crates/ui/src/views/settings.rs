@@ -7,8 +7,11 @@ use crate::{UiData, UiEvent, UiState};
 
 /// Draw the Settings tab.
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
-    egui::CentralPanel::default().show(ui, |ui| {
+    let theme = &data.theme;
+    let page = egui::Frame::new().fill(theme.bg());
+    egui::CentralPanel::default().frame(page).show(ui, |ui| {
         egui::ScrollArea::vertical().show(ui, |ui| {
+            card(ui, theme, |ui| {
             ui.label(egui::RichText::new(state.t("Appearance")).strong());
             ui.horizontal(|ui| {
                 ui.label(state.t("Language:"));
@@ -61,8 +64,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 events.push(UiEvent::SetTerminalFontSize(tfs));
             }
 
-            ui.add_space(12.0);
-            ui.separator();
+            });
+            ui.add_space(6.0);
+            card(ui, theme, |ui| {
             ui.label(egui::RichText::new(state.t("Vault")).strong());
             if !state.vault_exists {
                 ui.label(state.t(
@@ -115,8 +119,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 });
             }
 
-            ui.add_space(12.0);
-            ui.separator();
+            });
+            ui.add_space(6.0);
+            card(ui, theme, |ui| {
             ui.label(egui::RichText::new(state.t("Credentials")).strong());
             if data.credentials.is_empty() {
                 ui.label(state.t("No stored credentials."));
@@ -164,8 +169,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 });
             }
 
-            ui.add_space(12.0);
-            ui.separator();
+            });
+            ui.add_space(6.0);
+            card(ui, theme, |ui| {
             ui.label(egui::RichText::new(state.t("Sync")).strong());
             ui.horizontal(|ui| {
                 ui.label(state.t("Mode:"));
@@ -246,8 +252,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 .weak(),
             );
 
-            ui.add_space(12.0);
-            ui.separator();
+            });
+            ui.add_space(6.0);
+            card(ui, theme, |ui| {
             ui.label(egui::RichText::new(state.t("Updates")).strong());
             ui.horizontal(|ui| {
                 ui.label(state.tf(
@@ -286,8 +293,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 );
             }
 
-            ui.add_space(12.0);
-            ui.separator();
+            });
+            ui.add_space(6.0);
+            card(ui, theme, |ui| {
             ui.label(egui::RichText::new(state.t("Keyboard shortcuts")).strong());
             egui::Grid::new("shortcut_grid")
                 .num_columns(3)
@@ -305,8 +313,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                     }
                 });
 
-            ui.add_space(12.0);
-            ui.separator();
+            });
+            ui.add_space(6.0);
+            card(ui, theme, |ui| {
             ui.label(egui::RichText::new(state.t("About")).strong());
             ui.label(state.tf("OpsDeck {current}", &[("current", &data.update.current)]));
             ui.label(
@@ -316,6 +325,34 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut 
                 .small()
                 .weak(),
             );
+            });
         });
     });
+}
+
+/// One raised settings card — the same card language as the session
+/// dashboard, so sections read as distinct blocks on the page background
+/// instead of one flat sheet.
+fn card(ui: &mut egui::Ui, theme: &Theme, content: impl FnMut(&mut egui::Ui)) {
+    egui::Frame::new()
+        .fill(theme.panel())
+        .stroke(egui::Stroke::new(
+            1.0,
+            egui::Color32::from_rgba_unmultiplied(
+                theme.text().r(),
+                theme.text().g(),
+                theme.text().b(),
+                26,
+            ),
+        ))
+        .corner_radius(8.0)
+        .inner_margin(egui::Margin::same(12))
+        .outer_margin(egui::Margin::symmetric(8, 4))
+        .shadow(egui::epaint::Shadow {
+            offset: [0, 1],
+            blur: 4,
+            spread: 0,
+            color: egui::Color32::from_black_alpha(18),
+        })
+        .show(ui, content);
 }

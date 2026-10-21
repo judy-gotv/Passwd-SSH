@@ -65,6 +65,10 @@ enum AppMsg {
     },
     SessionList(Vec<SessionInfo>),
     Latencies(HashMap<String, Option<u32>>),
+    /// A group insert/delete committed — reload the cache now (setting
+    /// cache_dirty at event time raced the async write and the new group
+    /// only appeared after a restart).
+    GroupsChanged,
     TestResult(Result<u32, String>),
     /// A host save finished; connect to it now (Save and connect).
     HostSavedConnect(String),
@@ -814,6 +818,9 @@ impl OpsDeckApp {
                     sftp.link_host(&host_id, new).await;
                 });
                 self.state.toast(self.state.t("Reconnected"), false);
+            }
+            AppMsg::GroupsChanged => {
+                self.cache_dirty = true;
             }
             AppMsg::SessionList(list) => {
                 self.sessions = list;
@@ -1768,6 +1775,7 @@ impl OpsDeckApp {
             UiEvent::PingHosts => self.spawn_ping(),
             UiEvent::CreateGroup(name, color) => {
                 let storage = self.storage.clone();
+                let tx = self.msg_tx.clone();
                 tokio::spawn(async move {
                     let group = opsdeck_storage::models::HostGroup {
                         id: uuid::Uuid::new_v4().to_string(),
@@ -1778,18 +1786,19 @@ impl OpsDeckApp {
                         color,
                     };
                     let _ = storage.groups().create(&group).await;
+                    let _ = tx.send(AppMsg::GroupsChanged);
                 });
-                self.cache_dirty = true;
                 self.state.toast(self.state.t("Group created"), false);
             }
             UiEvent::TestConnection(form) => self.test_connection(*form),
             UiEvent::DeleteGroup(id) => {
                 let storage = self.storage.clone();
+                let tx = self.msg_tx.clone();
                 let gid = id.clone();
                 tokio::spawn(async move {
                     let _ = storage.groups().delete(&gid).await;
+                    let _ = tx.send(AppMsg::GroupsChanged);
                 });
-                self.cache_dirty = true;
                 if self.state.group_filter == opsdeck_ui::GroupFilter::Group(id) {
                     self.state.group_filter = opsdeck_ui::GroupFilter::All;
                 }

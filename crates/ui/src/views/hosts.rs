@@ -12,9 +12,6 @@ pub fn left_panel(
     data: &UiData,
     events: &mut Vec<UiEvent>,
 ) {
-    if state.group_dialog_open {
-        group_dialog(ui, state, data, events);
-    }
     if state.hosts_panel_collapsed {
         egui::Panel::left("host_panel")
             .default_size(92.0)
@@ -164,34 +161,28 @@ pub fn left_panel(
                 let selected = state.group_filter == GroupFilter::Group(group.id.clone());
                 let expanded = state.tree_expanded.contains(&group.id);
                 let mut delete = false;
-                ui.horizontal(|ui| {
-                    // Small chevron toggles the host leaves (Xterminal tree).
-                    let chev = if expanded { "▾" } else { "▸" };
-                    if ui
-                        .add(egui::Button::new(egui::RichText::new(chev).size(10.0)).frame(false))
-                        .clicked()
-                    {
+                let color = group.color.as_deref().and_then(parse_hex);
+                let resp = group_row(ui, &group.name, count, selected, expanded, color);
+                if resp.clicked() {
+                    // Clicking the chevron zone toggles; elsewhere selects.
+                    let on_chevron = resp
+                        .interact_pointer_pos()
+                        .is_some_and(|pos| pos.x < resp.rect.left() + 20.0);
+                    if on_chevron {
                         if expanded {
                             state.tree_expanded.remove(&group.id);
                         } else {
                             state.tree_expanded.insert(group.id.clone());
                         }
-                    }
-                    if let Some(hex) = group.color.as_deref().and_then(parse_hex) {
-                        let (rect, _) =
-                            ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-                        ui.painter_at(rect).circle_filled(rect.center(), 4.5, hex);
-                    }
-                    if tree_row(ui, "📁", &group.name, count, selected) {
+                    } else {
                         state.group_filter = GroupFilter::Group(group.id.clone());
                         state.main_tab = MainTab::Manager;
                     }
-                    if ui
-                        .small_button("🗑")
-                        .on_hover_text(state.t("Delete"))
-                        .clicked()
-                    {
+                }
+                resp.context_menu(|ui| {
+                    if ui.button(state.t("Delete group")).clicked() {
                         delete = true;
+                        ui.close();
                     }
                 });
                 if expanded {
@@ -202,10 +193,11 @@ pub fn left_panel(
                         ui.horizontal(|ui| {
                             ui.add_space(34.0);
                             let is_sel = state.selected_host.as_deref() == Some(host.id.as_str());
-                            let resp = ui.selectable_label(
-                                is_sel,
-                                egui::RichText::new(format!("· {}", host.name)).small(),
-                            );
+                            let mut text = egui::RichText::new(&host.name).small();
+                            if is_sel {
+                                text = text.strong();
+                            }
+                            let resp = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
                             if resp.clicked() {
                                 state.selected_host = Some(host.id.clone());
                                 state.group_filter = GroupFilter::Group(group.id.clone());
@@ -390,64 +382,35 @@ const GROUP_COLORS: [(&str, egui::Color32); 9] = [
 
 /// Create-group dialog (Xterminal): centered modal with a name field and
 /// a color palette; Confirm stays disabled until a name is typed.
-fn group_dialog(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &mut Vec<UiEvent>) {
-    let theme = data.theme;
+pub fn group_dialog(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    _data: &UiData,
+    events: &mut Vec<UiEvent>,
+) {
+    if !state.group_dialog_open {
+        return;
+    }
+    // Structured exactly like the (proven) vault dialog: rendered last in
+    // the frame, standard title bar, no custom frame/anchor. The previous
+    // bespoke window — custom frame, title-bar-less, shown first from the
+    // left panel — never delivered keyboard input to its text field.
     let mut open = true;
     let mut cancel = false;
     let mut confirm = false;
-    egui::Window::new("group_dialog")
-        .open(&mut open)
-        .title_bar(false)
+    egui::Window::new(state.t("Create group"))
         .collapsible(false)
         .resizable(false)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-        .frame(
-            egui::Frame::new()
-                .fill(theme.panel())
-                .stroke(egui::Stroke::new(
-                    1.0,
-                    egui::Color32::from_rgba_unmultiplied(
-                        theme.text().r(),
-                        theme.text().g(),
-                        theme.text().b(),
-                        40,
-                    ),
-                ))
-                .corner_radius(8.0)
-                .inner_margin(16.0)
-                .shadow(egui::epaint::Shadow {
-                    offset: [0, 4],
-                    blur: 16,
-                    spread: 0,
-                    color: egui::Color32::from_black_alpha(60),
-                }),
-        )
-        .show(ui.ctx(), |ui| {
-            ui.set_width(380.0);
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(state.t("Create group"))
-                        .strong()
-                        .size(15.0),
-                );
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .add(egui::Button::new("✕").frame(false))
-                        .on_hover_text(state.t("Cancel"))
-                        .clicked()
-                    {
-                        cancel = true;
-                    }
-                });
-            });
-            ui.add_space(12.0);
+        .default_width(400.0)
+        .open(&mut open)
+        .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(format!("{}:", state.t("Name")));
                 let hint = state.t("New group");
                 let resp = ui.add(
                     egui::TextEdit::singleline(&mut state.new_group_name)
                         .hint_text(hint)
-                        .desired_width(f32::INFINITY),
+                        .desired_width(300.0),
                 );
                 resp.request_focus();
                 if resp.lost_focus()
@@ -460,41 +423,38 @@ fn group_dialog(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &
             ui.add_space(10.0);
             ui.horizontal(|ui| {
                 ui.label(format!("{}:", state.t("Color")));
-                // "No color" tile (square with a red slash, like the reference)
+                // No-color tile: square with a red slash.
+                let none_sel = state.group_color.is_none();
                 let (rect, resp) =
                     ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
                 let painter = ui.painter_at(rect);
                 painter.rect_stroke(
                     rect.shrink(1.0),
                     3.0,
-                    egui::Stroke::new(1.0, ui.visuals().weak_text_color()),
+                    egui::Stroke::new(
+                        if none_sel { 2.0 } else { 1.0 },
+                        ui.visuals().weak_text_color(),
+                    ),
                     egui::StrokeKind::Inside,
                 );
                 painter.line_segment(
                     [rect.left_bottom(), rect.right_top()],
-                    egui::Stroke::new(1.5, egui::Color32::from_rgb(229, 72, 77)),
+                    egui::Stroke::new(1.6, egui::Color32::from_rgb(220, 60, 60)),
                 );
-                if state.group_color.is_none() {
-                    painter.rect_stroke(
-                        rect.expand(1.5),
-                        4.0,
-                        egui::Stroke::new(1.6, theme.accent()),
-                        egui::StrokeKind::Outside,
-                    );
-                }
                 if resp.clicked() {
                     state.group_color = None;
                 }
                 for (hex, color) in GROUP_COLORS {
+                    let sel = state.group_color.as_deref() == Some(hex);
                     let (rect, resp) =
                         ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
                     let painter = ui.painter_at(rect);
-                    painter.circle_filled(rect.center(), 8.0, color);
-                    if state.group_color.as_deref() == Some(hex) {
+                    painter.circle_filled(rect.center(), if sel { 9.0 } else { 7.5 }, color);
+                    if sel {
                         painter.circle_stroke(
                             rect.center(),
-                            10.0,
-                            egui::Stroke::new(1.6, theme.accent()),
+                            9.5,
+                            egui::Stroke::new(1.5, ui.visuals().text_color()),
                         );
                     }
                     if resp.clicked() {
@@ -504,14 +464,11 @@ fn group_dialog(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &
             });
             ui.add_space(14.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let ok = egui::Button::new(
-                    egui::RichText::new(state.t("Confirm")).color(egui::Color32::WHITE),
-                )
-                .fill(super::manager::XGREEN);
-                if ui
-                    .add_enabled(!state.new_group_name.trim().is_empty(), ok)
-                    .clicked()
-                {
+                let can_confirm = !state.new_group_name.trim().is_empty();
+                let btn = egui::Button::new(state.t("Confirm"))
+                    .fill(super::filespanel::XGREEN)
+                    .stroke(egui::Stroke::NONE);
+                if ui.add_enabled(can_confirm, btn).clicked() {
                     confirm = true;
                 }
                 if ui.button(state.t("Cancel")).clicked() {
@@ -533,4 +490,67 @@ fn group_dialog(ui: &mut egui::Ui, state: &mut UiState, data: &UiData, events: &
         state.new_group_name.clear();
         state.group_dialog_open = false;
     }
+}
+
+/// One painted group row (Xterminal tree): chevron triangle, optional
+/// color dot integrated before the folder, name + count as ONE row — no
+/// stray widgets floating at the panel edge, no always-on trash button
+/// (deletion lives in the right-click menu).
+fn group_row(
+    ui: &mut egui::Ui,
+    name: &str,
+    count: usize,
+    selected: bool,
+    expanded: bool,
+    color: Option<egui::Color32>,
+) -> egui::Response {
+    let height = 23.0;
+    let width = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
+    let painter = ui.painter_at(rect);
+    let visuals = ui.visuals();
+    if selected {
+        painter.rect_filled(rect, 3.0, visuals.selection.bg_fill);
+    } else if resp.hovered() {
+        painter.rect_filled(rect, 3.0, visuals.widgets.hovered.bg_fill);
+    }
+    let text_color = if selected {
+        egui::Color32::WHITE
+    } else {
+        visuals.text_color()
+    };
+    let cy = rect.center().y;
+    // Chevron triangle (painted — the font has no reliable ▸/▾ button look).
+    let c = egui::pos2(rect.left() + 10.0, cy);
+    let pts = if expanded {
+        vec![
+            egui::pos2(c.x - 4.0, c.y - 2.6),
+            egui::pos2(c.x + 4.0, c.y - 2.6),
+            egui::pos2(c.x, c.y + 3.2),
+        ]
+    } else {
+        vec![
+            egui::pos2(c.x - 2.6, c.y - 4.0),
+            egui::pos2(c.x - 2.6, c.y + 4.0),
+            egui::pos2(c.x + 3.2, c.y),
+        ]
+    };
+    painter.add(egui::Shape::convex_polygon(
+        pts,
+        text_color,
+        egui::Stroke::NONE,
+    ));
+    let mut x = rect.left() + 20.0;
+    if let Some(color) = color {
+        painter.circle_filled(egui::pos2(x + 4.0, cy), 4.0, color);
+        x += 12.0;
+    }
+    painter.text(
+        egui::pos2(x, cy),
+        egui::Align2::LEFT_CENTER,
+        format!("📁 {name} ({count})"),
+        egui::FontId::proportional(13.0),
+        text_color,
+    );
+    resp
 }
